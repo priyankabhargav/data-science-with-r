@@ -1,0 +1,5 @@
+Each team must use a single shared GitHub repository1. If your work cannot be accessed because these directions are not followed correctly, this part will be considered as not submitted. You will need to specify your project GitHub URL in the project proposal form. Store the following in your GitHub repository:
+br()
+R Markdown Notebook: your project process notebook
+Data: include all the data that you used in your project. If the data is too large for GitHub store it on an external cloud storage provider, such as Dropbox, Google Drive or OneDrive.
+README: the README.md file must give an overview of what you are handing in: your project notebook, data, and URLs to your project websites and screencast videos.
