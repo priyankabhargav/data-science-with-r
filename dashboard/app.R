@@ -17,7 +17,7 @@ ui<-
                              menuItem("The Team", tabName = "team", icon = icon("users")),
                              menuItem("Data", tabName = "data", icon = icon("database")),
                              menuItem("Analysis", tabName = "analysis", icon = icon("chart-bar")),
-                             menuItem("Process Markdown", tabName = "markdown", icon = icon("file-alt")),
+                             menuItem("Process Notebook", tabName = "markdown", icon = icon("file-alt")),
                              menuItem(" Repository", tabName = "repository", icon = icon("code-branch")),
                              menuItem("References", tabName = "references", icon = icon("link"))
                          )
@@ -30,7 +30,7 @@ ui<-
                             h1("Introduction",align="center"),
                             fluidRow(column(12, wellPanel(includeText("text.txt")))),
                             box(align="center", width = "100%",
-                                tags$iframe(width="100%", height=350, src="https://www.youtube.com/embed/T1-k7VYwsHg", frameborder="2", allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture", allowfullscreen=TRUE)
+                                tags$iframe(width="100%", height= 425, src="https://www.youtube.com/embed/T1-k7VYwsHg", frameborder="2", allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture", allowfullscreen=TRUE)
                             )
                 ),
                 
@@ -64,13 +64,14 @@ ui<-
                 # Process Markdown
                 tabItem(tabName = "markdown",
                         h1("Process Notebook", align="center"),
-                        includeMarkdown("project_proposal")
+                        includeMarkdown("project_proposal.Rmd")
                 ),
                 
                 # Repository
                 tabItem(tabName = "repository",
                         h1("Repository", align="center"),
-                        fluidRow(column(12, wellPanel(includeText("repository.txt"))))
+                        fluidRow(column(12, wellPanel(includeText("repository.txt")))),
+                        
                        
                 ),
                 
