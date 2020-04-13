@@ -28,7 +28,7 @@ ui<-
                 # Introduction
                 tabItem(tabName = "introduction",
                             h1("Introduction",align="center"),
-                            fluidRow(column(12, wellPanel(includeText("text.txt")))),
+                            fluidRow(column(12, wellPanel(includeText("text content/text.txt")))),
                             box(align="center", width = "100%",
                                 tags$iframe(width="100%", height= 425, src="https://www.youtube.com/embed/T1-k7VYwsHg", frameborder="2", allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture", allowfullscreen=TRUE)
                             )
@@ -70,7 +70,7 @@ ui<-
                 # Repository
                 tabItem(tabName = "repository",
                         h1("Repository", align="center"),
-                        fluidRow(column(12, wellPanel(includeText("repository.txt")))),
+                        fluidRow(column(12, wellPanel(includeText("text content/repository.txt")))),
                         
                        
                 ),
