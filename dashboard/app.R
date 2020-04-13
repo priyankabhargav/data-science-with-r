@@ -4,8 +4,9 @@ library(shinydashboard)
 library(markdown)
 
 #UI elements
-ui<-fluidPage(
-    dashboardPage( skin = "red",
+ui<-
+    dashboardPage( skin = "blue",
+        #“blue”, “black”, “purple”, “green”, “red”, “yellow”
         dashboardHeader(title = "Data Science with R"),
         dashboardSidebar(
                          
@@ -22,7 +23,7 @@ ui<-fluidPage(
                          )
         ),
         dashboardBody(
-           includeCSS("www/style.css"),
+           #includeCSS("www/style.css"),
             tabItems(
                 # Introduction
                 tabItem(tabName = "introduction",
@@ -63,12 +64,14 @@ ui<-fluidPage(
                 # Process Markdown
                 tabItem(tabName = "markdown",
                         h1("Process Notebook", align="center"),
-                        includeMarkdown("test.Rmd")
+                        includeMarkdown("project_proposal")
                 ),
                 
                 # Repository
                 tabItem(tabName = "repository",
-                        h1("Repository", align="center")
+                        h1("Repository", align="center"),
+                        fluidRow(column(12, wellPanel(includeText("repository.txt"))))
+                       
                 ),
                 
                 # References
@@ -78,7 +81,7 @@ ui<-fluidPage(
             )
         )
     )
-)
+
 
 
 server <- function(input, output) {
