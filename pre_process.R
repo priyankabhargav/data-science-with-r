@@ -45,8 +45,7 @@ perform_preprocess <- function(row_cont){
   x <- str_replace_all(x, "[\t\r\n]" , " ")
   corpus <- VCorpus(VectorSource(as.vector(x)))
   corpus <- corpus %>% tm_map(content_transformer(removePunctuation)) %>%
-    tm_map(removeNumbers) %>% tm_map(content_transformer(tolower)) %>%
-    tm_map(content_transformer(tolower)) %>% tm_map(content_transformer(removeWords), stopwords("english")) %>%
+    tm_map(removeNumbers) %>% tm_map(content_transformer(tolower)) %>% tm_map(content_transformer(removeWords), stopwords("english")) %>%
     tm_map(stripWhitespace)
   return (convert.tm.to.character(corpus)) }
 
