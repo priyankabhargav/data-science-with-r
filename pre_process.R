@@ -6,6 +6,11 @@ library(hash)
 library(stringr)
 library(gsubfn)
 library(textreg)
+library(text2vec)
+library(Rtsne)
+library(ggplot2)
+library(plotly)
+
 
 all_file_names <- list.files(path = "J:\\Sem 2\\Data Science with R\\scrapped.zip (Unzipped Files)", pattern = "*.xlsx", full.names = T)
 print(all_file_names)
@@ -52,4 +57,21 @@ perform_preprocess <- function(row_cont){
 pre_proces_res <- Sample_file %>%
   mutate(pre_process_content = perform_preprocess(content))
 
-pre_proces_res$pre_process_content[[35]]
+data <- pre_proces_res$pre_process_content[[1]]
+
+perform_word2vec <- function(row_cont){
+  tokens <- space_tokenizer(row_cont)
+  it = itoken(tokens, progressbar = FALSE)
+  vocab <- create_vocabulary(it)
+  vocab <- prune_vocabulary(vocab, term_count_min = 1L)
+  vectorizer <- vocab_vectorizer(vocab)
+  tcm <- create_tcm(it, vectorizer, skip_grams_window = 5L)
+  glove = GlobalVectors$new(rank = 100, x_max = 10)
+  wv_main = glove$fit_transform(tcm, n_iter = 20)
+  wv_context = glove$components
+  word_vectors = wv_main + t(wv_context)
+  vecs <- colSums(word_vectors)/nrow(word_vectors)
+  return (matrix(vecs,nrow = 1,ncol = 100))}
+
+pre_proces_res <- Sample_file %>%
+  mutate(Word2vec_mat = perform_word2vec(pre_process_content))
