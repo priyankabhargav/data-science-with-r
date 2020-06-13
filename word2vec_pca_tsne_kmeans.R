@@ -33,7 +33,7 @@ doc2vec <- gensim$models$doc2vec
 TaggedDoc <- gensim$models$doc2vec$TaggedDocument
 
 #Importing data
-full <- read.csv("C:\\Users\\calid\\Desktop\\full_dataset.csv")
+full <- read.csv("/Users/nandish21/Downloads/1-Masters/2nd-Sem/DSwR/git/git_version_3/44000 Records/Cases_4000.csv")
 print(length(full$content))
 
 #Removing duplicate urls
@@ -150,3 +150,122 @@ plot(1:100, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of
 k2 <- kmeans(tsne_vals, centers = 8, nstart = 25, iter.max = 10000)
 fviz_cluster(k2,a)
 k2$cluster
+
+
+
+
+
+
+
+
+# install.packages("tidytext")
+# install.packages("topicmodels")
+# install.packages("rjson")
+# install.packages("here")
+# install.packages("tictoc")
+library(tidyverse)
+library(tidytext)
+library(topicmodels)
+library(here)
+library(rjson)
+library(tm)
+library(tictoc)
+library(topicmodels)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# read the cluster info and plot
+tsne_output <- read.csv("/Users/nandish21/Downloads/1-Masters/2nd-Sem/ATML/Project/git/git_version_3/data-science-with-r/tsne_perplex30_pcaFalse_kmeans8.csv")
+head(tsne_output)
+install.packages("psych")
+library(psych)
+pairs.panels(tsne_output[2:3],
+             gap = 0,
+             bg = c("red","yellow","blue","green","cyan","violet","pink","orange")[tsne_output$cluster],
+             pch = 21)
+
+
+
+#append the cluster column
+test_df_new <- test_df %>%mutate(cluster = k2$cluster) %>% group_by(cluster)
+abc <- test_df %>%
+  group_by(cluster) %>%
+  summarise(counts = n())
+
+ggplot(test_df_new, aes(cluster)) +
+  geom_bar(fill = "#0073C2FF") 
+
+#split the data based on cluster
+test_df_new <- test_df_new %>%
+  group_by(cluster) 
+test_df_clusters <- group_split(test_df_new)
+
+#selct small set of files to test
+test_df_new_1 <- test_df_new[1:70,]
+test_df_new_1 <- test_df_new_1 %>%
+  group_by(cluster) 
+test_df_clusters <- group_split(test_df_new_1)
+
+#perform LDA for each cluster
+count = 0
+terms_in_topics_in_cluster <- list()
+
+for (single_cluster in test_df_clusters) {
+  count = count+1
+  
+  docs <- Corpus(VectorSource(single_cluster$pre_process_content))
+  params <- list(minDocFreq = 1,removeNumbers = TRUE,stopwords = TRUE,stemming = FALSE,weighting = weightTf) 
+  dtm <- DocumentTermMatrix(docs, control = params)
+  freq <- colSums(as.matrix(dtm))
+  print("cluster-"+as.String(single_cluster$cluster[[1]]))
+  print("Total number of words"+as.String(length(freq)))
+  
+  # to force printing to take place during the loop
+  flush.console()
+  
+  # Set parameters for Gibbs sampling
+  burnin <- 4000
+  iter <- 2000
+  thin <- 500
+  seed <-list(2003,5,63,100001,765)
+  nstart <- 5
+  best <- TRUE
+  
+  # Number of topics
+  k <- 10
+  
+  # Run LDA using Gibbs sampling
+  ldaOut <-LDA(dtm,k, method="Gibbs", control=list(nstart=nstart, seed = seed, best=best, burnin = burnin, iter = iter, thin=thin))
+  
+  # docs to topics
+  ldaOut.topics <- as.matrix(topics(ldaOut))
+  
+  # Top 10 terms in each topic
+  ldaOut.terms <- as.matrix(terms(ldaOut,10))
+  
+  terms_in_topics_in_cluster <- append(terms_in_topics_in_cluster, list(as.data.frame(ldaOut.terms)))
+}
+
+print(terms_in_topics_in_cluster)
+
+# create the visualization(it will create for the last cluster in the above loop)
+ap_topics <- tidy(ldaOut, matrix = "beta")
+
+ap_top_terms <- ap_topics %>%
+  group_by(topic) %>%
+  slice_head(n = 10) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+ap_top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip()
+
+
+
+
+
