@@ -37,7 +37,10 @@ get_rows <- function(df,colm_names){
 }
 
 
-Sample_file <- read_excel("J:\\Sem 2\\Data Science with R\\scrapped.zip (Unzipped Files)\\Testing_scrapped.xlsx")
+Sample_file <- read_excel("J:\\Sem 2\\Data Science with R\\scrapped.zip (Unzipped Files)\\Sample.xlsx")
+custom_words <- read_excel("J:\\Sem 2\\Data Science with R\\Custom_Stopwords.xlsx")
+custom_words = custom_words$Stopwords
+print(custom_words)
 colm_name <- colnames(Sample_file)
 head(Sample_file)
 
@@ -50,14 +53,17 @@ perform_preprocess <- function(row_cont){
   x <- str_replace_all(x, "[\t\r\n]" , " ")
   corpus <- VCorpus(VectorSource(as.vector(x)))
   corpus <- corpus %>% tm_map(content_transformer(removePunctuation)) %>%
-    tm_map(removeNumbers) %>% tm_map(content_transformer(tolower)) %>% tm_map(content_transformer(removeWords), stopwords("english")) %>%
+    tm_map(removeNumbers) %>% tm_map(content_transformer(tolower)) %>% tm_map(content_transformer(removeWords), c(stopwords("english"),custom_words)) %>%
     tm_map(stripWhitespace)
   return (convert.tm.to.character(corpus)) }
 
 pre_proces_res <- Sample_file %>%
   mutate(pre_process_content = perform_preprocess(content))
 
+pre_proces_res
+
 data <- pre_proces_res$pre_process_content[[1]]
+data
 
 perform_word2vec <- function(row_cont){
   tokens <- space_tokenizer(row_cont)

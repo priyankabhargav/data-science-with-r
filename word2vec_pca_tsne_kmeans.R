@@ -18,6 +18,17 @@ library(caret)
 library(Rtsne)
 library(cluster)    
 library(factoextra)
+library(tidytext)
+library(topicmodels)
+library(here)
+library(rjson)
+library(tictoc)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(readxl)
+
 
 #Python environment
 path_to_python <- "C:\\Users\\calid\\AppData\\Local\\R-MINI~1\\envs\\R-RETI~1\\python.exe"
@@ -34,6 +45,8 @@ TaggedDoc <- gensim$models$doc2vec$TaggedDocument
 
 #Importing data
 full <- read.csv("/Users/nandish21/Downloads/1-Masters/2nd-Sem/DSwR/git/git_version_3/44000 Records/Cases_4000.csv")
+custom_words <- read_excel(here("data","Custom_Stopwords.xlsx"))
+custom_words = custom_words$Stopwords
 print(length(full$content))
 
 #Removing duplicate urls
@@ -53,7 +66,7 @@ perform_preprocess <- function(row_cont){
   x <- str_replace_all(x, "[^[:alnum:]]", " ")
 
   corpus <- VCorpus(VectorSource(as.vector(x)))
-  corpus <- corpus %>% tm_map(content_transformer(removePunctuation)) %>% tm_map(removeNumbers) %>% tm_map(content_transformer(tolower))%>% tm_map(content_transformer(removeWords), stopwords("english")) %>%tm_map(stripWhitespace)
+  corpus <- corpus %>% tm_map(content_transformer(removePunctuation)) %>% tm_map(removeNumbers) %>% tm_map(content_transformer(tolower))%>% tm_map(content_transformer(removeWords), c(stopwords("english"),custom_words)) %>%tm_map(stripWhitespace)
   return (convert.tm.to.character(corpus))
   #return (as.String(corpus))
 }
@@ -158,22 +171,8 @@ k2$cluster
 
 
 
-# install.packages("tidytext")
-# install.packages("topicmodels")
-# install.packages("rjson")
-# install.packages("here")
-# install.packages("tictoc")
-library(tidyverse)
-library(tidytext)
-library(topicmodels)
-library(here)
-library(rjson)
-library(tm)
-library(tictoc)
-library(topicmodels)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
+
+
 
 # read the cluster info and plot
 tsne_output <- read.csv("/Users/nandish21/Downloads/1-Masters/2nd-Sem/ATML/Project/git/git_version_3/data-science-with-r/tsne_perplex30_pcaFalse_kmeans8.csv")
