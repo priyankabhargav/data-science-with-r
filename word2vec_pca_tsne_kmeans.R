@@ -28,15 +28,18 @@ library(dplyr)
 library(tidyr)
 library(readr)
 library(readxl)
+library(hash)
+library(LDAvis)
+library(servr)
 
 
 #Python environment
-path_to_python <- "C:\\Users\\calid\\AppData\\Local\\R-MINI~1\\envs\\R-RETI~1\\python.exe"
+path_to_python <- "E:\\Anaconda\\python.exe"
 use_python(path_to_python)
 
 #Using python libraries in R
 reticulate::use_python(path_to_python)
-py_install("gensim")
+#py_install("gensim")
 gensim <- import("gensim")
 builtins <- import_builtins()
 Word2Vec <- gensim$models$Word2Vec # Extract the Word2Vec model
@@ -44,7 +47,7 @@ doc2vec <- gensim$models$doc2vec
 TaggedDoc <- gensim$models$doc2vec$TaggedDocument
 
 #Importing data
-full <- read.csv("/Users/nandish21/Downloads/1-Masters/2nd-Sem/DSwR/git/git_version_3/44000 Records/Cases_4000.csv")
+full <- read_csv("J:\\Sem 2\\Data Science with R\\Testing_4000.csv")
 custom_words <- read_excel(here("data","Custom_Stopwords.xlsx"))
 custom_words = custom_words$Stopwords
 print(length(full$content))
@@ -53,6 +56,8 @@ print(length(full$content))
 new_file <- full[!duplicated(full$url), ]
 print(length(new_file$url))
 
+
+new_file = full
 #Final dataset 
 test_df<- new_file[!duplicated(new_file$content), ]
 print(length(test_df$content))
@@ -210,6 +215,10 @@ test_df_clusters <- group_split(test_df_new_1)
 count = 0
 terms_in_topics_in_cluster <- list()
 
+#Hash to store all lda vectors
+all_ldas <- hash()
+
+#Caluclate LDA for all clusters
 for (single_cluster in test_df_clusters) {
   count = count+1
   
@@ -237,6 +246,7 @@ for (single_cluster in test_df_clusters) {
   # Run LDA using Gibbs sampling
   ldaOut <-LDA(dtm,k, method="Gibbs", control=list(nstart=nstart, seed = seed, best=best, burnin = burnin, iter = iter, thin=thin))
   
+  all_ldas[count] <- ldaOut
   # docs to topics
   ldaOut.topics <- as.matrix(topics(ldaOut))
   
@@ -244,27 +254,60 @@ for (single_cluster in test_df_clusters) {
   ldaOut.terms <- as.matrix(terms(ldaOut,10))
   
   terms_in_topics_in_cluster <- append(terms_in_topics_in_cluster, list(as.data.frame(ldaOut.terms)))
+
+
 }
 
 print(terms_in_topics_in_cluster)
 
-# create the visualization(it will create for the last cluster in the above loop)
-ap_topics <- tidy(ldaOut, matrix = "beta")
+# create the visualization for each cluster
 
-ap_top_terms <- ap_topics %>%
-  group_by(topic) %>%
-  slice_head(n = 10) %>%
-  ungroup() %>%
-  arrange(topic, -beta)
+i <- 1
+for (clust in values(all_ldas)) {
+  ap_topics <- tidy(clust, matrix = "beta")
+  
+  ap_top_terms <- ap_topics %>%
+    group_by(topic) %>%
+    top_n(n = 10) %>%
+    ungroup() %>%
+    arrange(topic, -beta)
 
-ap_top_terms %>%
-  mutate(term = reorder(term, beta)) %>%
-  ggplot(aes(term, beta, fill = factor(topic))) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ topic, scales = "free") +
-  coord_flip()
+  print("printing graphs")
+  plots <- ap_top_terms %>%
+    mutate(term = reorder_within(term, beta,topic)) %>%
+    ggplot(aes(term, beta, fill = factor(topic))) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free") + coord_flip() + scale_x_reordered()
+  #plot_list<- append(plots)
+  file_n <- paste("cluster",i) 
+  ggsave(file_n, device = "pdf",
+         path="J:\\",width = 10, height = 10)
+  i <- i + 1
+  #Sys.sleep(20)
+}
 
 
+#Create LDAVis visualisation
+#i <- 1
+for (clust in values(all_ldas)) {
+#file_n <- paste("vis",i) 
+#serVis(topicmodels2LDAvis(clust),out.dir = file_n,open.browser = TRUE)
+serVis(topicmodels2LDAvis(clust),open.browser = TRUE)
+Sys.sleep(20)
+#i <- i + 1
+}
 
 
-
+topicmodels2LDAvis <- function(x){
+  post <- topicmodels::posterior(x)
+  if (ncol(post[["topics"]]) < 3) stop("The model must contain > 2 topics")
+  mat <- x@wordassignments
+  json_lda<- LDAvis::createJSON(
+    phi = post[["terms"]], 
+    theta = post[["topics"]],
+    vocab = colnames(post[["terms"]]),
+    doc.length = slam::row_sums(mat, na.rm = TRUE),
+    term.frequency = slam::col_sums(mat, na.rm = TRUE))
+  return (json_lda)
+  
+}
