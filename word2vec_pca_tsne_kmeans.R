@@ -1,6 +1,8 @@
 install.packages(c("quanteda", "stringr"))
 install.packages("reticulate")
 install.packages("rbokeh")
+install.packages("LDAvis")
+install.packages("servr")
 
 
 library(quanteda)
@@ -47,7 +49,7 @@ doc2vec <- gensim$models$doc2vec
 TaggedDoc <- gensim$models$doc2vec$TaggedDocument
 
 #Importing data
-full <- read_csv("J:\\Sem 2\\Data Science with R\\Testing_4000.csv")
+full <- read_csv("/Users/nandish21/Downloads/1-Masters/2nd-Sem/DSwR/git/git_version_3/44000 Records/Cases_4000.csv")
 custom_words <- read_excel(here("data","Custom_Stopwords.xlsx"))
 custom_words = custom_words$Stopwords
 print(length(full$content))
@@ -254,8 +256,8 @@ for (single_cluster in test_df_clusters) {
   ldaOut.terms <- as.matrix(terms(ldaOut,10))
   
   terms_in_topics_in_cluster <- append(terms_in_topics_in_cluster, list(as.data.frame(ldaOut.terms)))
-
-
+  
+  
 }
 
 print(terms_in_topics_in_cluster)
@@ -311,3 +313,47 @@ topicmodels2LDAvis <- function(x){
   return (json_lda)
   
 }
+
+#wordcloud
+perform_wordcloud <- function(content){
+  
+  docs <- Corpus(VectorSource(content))
+  
+  dtm <- TermDocumentMatrix(docs) 
+  matrix <- as.matrix(dtm) 
+  words <- sort(rowSums(matrix),decreasing=TRUE) 
+  df1 <- data.frame(word = names(words),freq=words)
+  set.seed(1234) # for reproducibility
+  
+  wordcloud(
+    words = df1$word,
+    freq = df1$freq,
+    min.freq = 1,
+    max.words = 50,
+    random.order = FALSE,
+    rot.per = 0.95,
+    colors = brewer.pal(8, "Dark2")
+  )
+  
+}
+# perform wordcloud on 1st cluster
+perform_wordcloud(test_df_clusters[[1]]$pre_process_content)
+
+# perform wordcloud on all clusters
+for (single_cluster in test_df_clusters) {
+  perform_wordcloud(single_cluster$pre_process_content)
+}
+
+#some fancy wordclouds
+require(devtools)
+install_github("lchiffon/wordcloud2")
+library(wordcloud2)
+#wordcloud1
+wordcloud2(data = df1)
+#wordcloud2
+wordcloud2(data=df1, size = 0.3, shape = 'pentagon')
+#wordcloud3
+letterCloud(df1, word = "CORONA VIRUS")
+#wordcloud4
+letterCloud(df1, word = "R", wordSize = 1)
+
