@@ -216,6 +216,7 @@ test_df_clusters <- group_split(test_df_new_1)
 #perform LDA for each cluster
 count = 0
 terms_in_topics_in_cluster <- list()
+top_5_keywords_per_topic_in_all_clusters <- list()
 
 #Hash to store all lda vectors
 all_ldas <- hash()
@@ -256,7 +257,8 @@ for (single_cluster in test_df_clusters) {
   ldaOut.terms <- as.matrix(terms(ldaOut,10))
   
   terms_in_topics_in_cluster <- append(terms_in_topics_in_cluster, list(as.data.frame(ldaOut.terms)))
-  
+  cluster_top_50_words <- as.list(ldaOut.terms[1:5,])
+  top_5_keywords_per_topic_in_all_clusters <- append(top_5_keywords_per_topic_in_all_clusters, list(cluster_top_50_words))
   
 }
 
