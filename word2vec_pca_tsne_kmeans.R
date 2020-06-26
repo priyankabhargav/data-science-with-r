@@ -33,7 +33,7 @@ library(readxl)
 library(hash)
 library(LDAvis)
 library(servr)
-
+library(ldatuning)
 
 #Python environment
 path_to_python <- "E:\\Anaconda\\python.exe"
@@ -217,6 +217,25 @@ test_df_clusters <- group_split(test_df_new_1)
 count = 0
 terms_in_topics_in_cluster <- list()
 top_5_keywords_per_topic_in_all_clusters <- list()
+
+for (single_cluster in test_df_clusters) {
+  docs <- Corpus(VectorSource(single_cluster$pre_process_content))
+  params <- list(minDocFreq = 1,removeNumbers = TRUE,stopwords = TRUE,stemming = FALSE,weighting = weightTf) 
+  dtm <- DocumentTermMatrix(docs, control = params)
+#Performing LDA tuning
+  result <- FindTopicsNumber(
+    dtm,
+    topics = seq(from = 2, to = 15, by = 1),
+    metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+    method = "Gibbs",
+    control = list(seed = 77),
+    mc.cores = NA,
+    verbose = TRUE
+  )
+
+#plotting the metrics
+  FindTopicsNumber_plot(result)
+}
 
 #Hash to store all lda vectors
 all_ldas <- hash()
