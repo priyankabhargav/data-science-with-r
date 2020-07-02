@@ -11,7 +11,7 @@
 
 <meta name="author" content="Andreas Niekler, Gregor Wiedemann" />
 
-<meta name="date" content="2020-07-02" />
+<meta name="date" content="2020-07-03" />
 
 <title>Tutorial 7: Classification</title>
 
@@ -427,7 +427,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Tutorial 7: Classification</h1>
 <h4 class="author">Andreas Niekler, Gregor Wiedemann</h4>
-<h4 class="date">2020-07-02</h4>
+<h4 class="date">2020-07-03</h4>
 
 </div>
 
@@ -533,8 +533,14 @@ summary(model)</code></pre>
 ## ClassNames     2  factor numeric  
 ## NbClass        1  -none- numeric</code></pre>
 <p>The model created by the LiblineaR function can now be utilized to predict the labels of the test set. Then we compare the result of the automatic classification to our known labels to determine the accuracy of the process.</p>
-<pre class="r"><code>classification &lt;- predict(model, testDTM) 
-predictedLabels &lt;- classification$predictions
+<pre class="r"><code>classification &lt;- predict(model, testDTM) </code></pre>
+<pre><code>## Loading required package: SparseM</code></pre>
+<pre><code>## 
+## Attaching package: &#39;SparseM&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:base&#39;:
+## 
+##     backsolve</code></pre>
+<pre class="r"><code>predictedLabels &lt;- classification$predictions
 contingencyTable &lt;- table(predictedLabels, testLabels)
 print(contingencyTable) </code></pre>
 <pre><code>##                testLabels

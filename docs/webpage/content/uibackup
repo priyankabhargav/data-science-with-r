@@ -1,0 +1,74 @@
+
+library(shinythemes)
+
+fluidPage(theme = shinytheme("flatly"),
+                   
+                   
+                   navbarPage("Data Science with R",position = "fixed-top", div(tags$style(type="text/css", "body {padding-top: 70px;}")),selected="Overview",
+                              
+                              
+                              tabPanel("Overview",
+                                       navlistPanel(fluid = TRUE,well = TRUE, widths = c(2, 10),
+                                                    
+                                                    tabPanel("Introduction", 
+                                                             h1("Introduction",align="center"),
+                                                             fluidRow(
+                                                               column(12,wellPanel(
+                                                                                    includeText("content/text.txt")),
+                                                                      )
+                                                                    ),
+                                                             fluidRow(
+                                                               column(12,wellPanel(
+                                                                 includeText("content/text.txt")),
+                                                               )
+                                                             )
+                                                               ),
+                                                               
+                                                             
+                                                    
+                                                    
+                                                    tabPanel("Motivation",
+                                                             h1("Motivation", align="center"),
+                                                             fluidRow(column(12,wellPanel((includeText("content/text.txt")))) )
+                                                    ),
+                                                    
+                                                    tabPanel("Objective",
+                                                             h1("Objective", align="center")
+                                                    ),
+                                                    
+                                                    tabPanel("The Team",
+                                                             h1("The Team", align="center")
+                                                    )
+                                       )
+                                       
+                              ),
+                              tabPanel("Content",
+                                       navlistPanel(fluid = TRUE,well = TRUE, widths = c(2, 10),
+                                                    
+                                                    tabPanel("Data", 
+                                                             h1("Introduction",align="center"),
+                                                             fluidRow(
+                                                               column(12,wellPanel((includeText("content/text.txt")))),
+                                                               column(12, tags$iframe( width="100%", height=800, src="https://www.youtube.com/embed/T1-k7VYwsHg", frameborder="5", allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture", allowfullscreen=TRUE)
+                                                               ),
+                                                             )
+                                                    ),
+                                                    
+                                                    tabPanel("Repository",
+                                                             h1("Motivation", align="center"),
+                                                             fluidRow(column(12,wellPanel((includeText("content/text.txt")))) )
+                                                    ),
+                                                    tabPanel("Related Work",
+                                                             h1("Objective", align="center")
+                                                    ),
+                                                    tabPanel("Reference",
+                                                             h1("Objective", align="center")
+                                                    )
+                                       )
+                              ),
+                              tabPanel("Analysis"),
+                              tabPanel("Visualization"),
+                              tabPanel("Markdown")
+                   )
+)
+
