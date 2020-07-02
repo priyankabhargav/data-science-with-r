@@ -1,0 +1,12 @@
+base
+png
+quanteda
+xml2
+rvest
+dplyr
+reshape2
+ggplot2
+wordcloud2
+Matrix
+igraph
+topicmodels
