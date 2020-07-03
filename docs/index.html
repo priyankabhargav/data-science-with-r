@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+
+
+<title></title>
+
+<script src="site_libs/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/united.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<script src="site_libs/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+div.sourceCode { overflow-x: auto; }
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { color: #0000ff; } /* Keyword */
+code > span.ch { color: #008080; } /* Char */
+code > span.st { color: #008080; } /* String */
+code > span.co { color: #008000; } /* Comment */
+code > span.ot { color: #ff4000; } /* Other */
+code > span.al { color: #ff0000; } /* Alert */
+code > span.er { color: #ff0000; font-weight: bold; } /* Error */
+code > span.wa { color: #008000; font-weight: bold; } /* Warning */
+code > span.cn { } /* Constant */
+code > span.sc { color: #008080; } /* SpecialChar */
+code > span.vs { color: #008080; } /* VerbatimString */
+code > span.ss { color: #008080; } /* SpecialString */
+code > span.im { } /* Import */
+code > span.va { } /* Variable */
+code > span.cf { color: #0000ff; } /* ControlFlow */
+code > span.op { } /* Operator */
+code > span.bu { } /* BuiltIn */
+code > span.ex { } /* Extension */
+code > span.pp { color: #ff4000; } /* Preprocessor */
+code > span.do { color: #008000; } /* Documentation */
+code > span.an { color: #008000; } /* Annotation */
+code > span.cv { color: #008000; } /* CommentVar */
+code > span.at { } /* Attribute */
+code > span.in { color: #008000; } /* Information */
+</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+
+
+<style type="text/css">
+h1 {
+  font-size: 34px;
+}
+h1.title {
+  font-size: 38px;
+}
+h2 {
+  font-size: 30px;
+}
+h3 {
+  font-size: 24px;
+}
+h4 {
+  font-size: 18px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 12px;
+}
+.table th:not([align]) {
+  text-align: left;
+}
+</style>
+
+<link rel="stylesheet" href="style.css" type="text/css" />
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+<style type="text/css">
+/* padding for bootstrap navbar */
+body {
+  padding-top: 51px;
+  padding-bottom: 40px;
+}
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h1 {
+  padding-top: 56px;
+  margin-top: -56px;
+}
+
+.section h2 {
+  padding-top: 56px;
+  margin-top: -56px;
+}
+.section h3 {
+  padding-top: 56px;
+  margin-top: -56px;
+}
+.section h4 {
+  padding-top: 56px;
+  margin-top: -56px;
+}
+.section h5 {
+  padding-top: 56px;
+  margin-top: -56px;
+}
+.section h6 {
+  padding-top: 56px;
+  margin-top: -56px;
+}
+</style>
+
+<script>
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.parent().addClass('active');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+});
+</script>
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+<script>
+$(document).ready(function ()  {
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3,h4",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_').toLowerCase();
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = false;
+    options.smoothScroll = false;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+  padding-left: 25px;
+  text-indent: 0;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+.tocify-subheader {
+  display: inline;
+}
+.tocify-subheader .tocify-item {
+  font-size: 0.95em;
+}
+
+</style>
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row-fluid">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">EurLex classification</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="multilabel_classification_intro.html">Multi-label classification</a>
+</li>
+<li>
+  <a href="exploratory_analysis.html">Exploratory Analysis</a>
+</li>
+<li>
+  <a href="experimentalResults.html">Classification</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div class="fluid-row" id="header">
+
+
+
+
+</div>
+
+
+<p>     </p>
+<div id="overview-and-motivation" class="section level1">
+<h1>Overview and motivation</h1>
+<p>A single text document often has multiple semantic aspects. A single news article related to politics may have aspects related to trade, technology and defense. Therefore, often a document needs to be tagged to multiple labels/categories, instead of a single category. Most of the classification algorithms deal with datasets which have a set of input features and only <em>one</em> output class. However, in reality the problem might be different from a typical binary or multiclass classification, as often a document or an image can be associated with multiple categories rather than a single category.</p>
+<p>An introduction of enormous amount of documents belonging to multiple categories in the legal domain, makes it an attractive area for employing automated solutions. In this project we explore a public multi labelled legal text dataset that has been manually annotated over a decade. It contains laws related to the European Union, including treaties, legislation, case-law and legislative proposals, in 24 different languages. This is popularly known as the <strong>EUR-Lex</strong> dataset containing about twenty five thousand documents, around seven thousand labels and in several European languages. A skewed distribution of multiple labels per document, along with existence of the same data in multiple languages, makes this dataset an interesting proposition. Few publications have used an older version of the dataset which had around four thousand labels. The ones that have used this have reported relatively poor F1 values in the range of 40% (referred to as EUROVOC)<span class="citation">[<a href="#ref-LozaMencia2010">1</a>]</span> (which may be fair, given the high number of labels). There is no publications for the new dataset (having around 7000 labels), which motivates us to explore the problem of multilabel classification on this dataset.</p>
+<blockquote>
+<p><strong>Multilable v/s Multiclass classification</strong><br />
+In multi-label classification, each instance in the training set is associated with a set of labels, instead of a single label, and the task is to predict the <em>label-sets</em> of unseen instances, instead of a single label.<br />
+There is a difference between <em>multi-class classification</em> and <em>multi-label classification</em>. In multi-class problem the classes or labels are mutually-exclusive, i.e. it makes the assumption that each instance can be assigned to only one label. E.g - an animal can be either a dog or a cat but not both. But in multi-label problem multiple labels may be assigned to an instance. E.g - a movie can belong to a comedy genre as well a detective genre.</p>
+</blockquote>
+<center>
+<img src="Figs/multiclass-label.png" alt="Multilable v/s Multiclass classification" />
+</center>
+<p> </p>
+<div id="project-objectives" class="section level3">
+<h3><span class="header"> Project objectives</span></h3>
+<blockquote>
+<blockquote>
+<p>Can we use machine learning techniques to automatically annotate legal documents?</p>
+</blockquote>
+</blockquote>
+<p>To answer the question we need to answer some research questions:</p>
+<ul>
+<li>How well the classifiers perform over Eur-Lex dataset for two languages (English and Deutsch).<br />
+</li>
+<li>How the classifiers’ performance changes with different features- one with term frequency-inverse document frequency(tf-idf), another with term incidence.</li>
+<li>Which flavour of multilabel transform algorithm perform best among all, the one which considers label correlation or the one which does not.</li>
+<li>How the classifiers’ performance changes when the number of labels is reduced (disabling the imbalanced labelsets).</li>
+</ul>
+</div>
+<div id="design-overview-algorithms-and-methods" class="section level2">
+<h2>Design overview (algorithms and methods)</h2>
+<ul>
+<li>Pre-processing:
+<ul>
+<li>Exclude stop words, perform lemmatization.</li>
+<li>Extract features - term frequency-inverse document frequency(tf-idf) and term incidence.</li>
+<li>Generate the MLD <span class="citation">[<a href="#ref-Gibaja:2015:TML:2737799.2716262">2</a>]</span> data format, which is needed for multi label data exploration and classification using <em>mldr</em> <span class="citation">[<a href="#ref-charte2015working">3</a>]</span> and <em>utiml</em> <span class="citation">[<a href="#ref-rivolliutiml">4</a>]</span> packages.</li>
+</ul></li>
+<li>Statistical exploration:
+<ul>
+<li>Basic exploration - distribution of attributes/labels</li>
+<li>Multi-label specific exploration- labelset distribution, relationship among labels, and relationship between attributes and labels/labelsets</li>
+</ul></li>
+<li>Classification:
+<ul>
+<li>Apply the classifiers (Nearest Neighbour, Random Forest, XGBoost) over the preprocessed dataset (tf-idf and term incidence) for German and English text, and for three flavours of multilabel classification methods:
+<ul>
+<li>Binary Relevance (BR) <span class="citation">[<a href="#ref-godbole2004discriminative">5</a>]</span></li>
+<li>Label Powerset (LP) <span class="citation">[<a href="#ref-boutell2004learning">6</a>]</span></li>
+<li>Classifier Chain (CC) <span class="citation">[<a href="#ref-read2011classifier">7</a>]</span></li>
+</ul></li>
+<li>Apply the classifiers (Nearest Neighbour, Random Forest, XGBoost) over the preprocessed dataset (tf-idf and term incidence) for German and English text <em>for reduced labels</em>, and for two flavours of multilabel classification methods:
+<ul>
+<li>Binary Relevance (BR)</li>
+<li>Label Powerset (LP)</li>
+</ul></li>
+</ul></li>
+<li>The following evaluation measures has been used primarily to assess the multilabel predictive performance:
+<ul>
+<li>Accuracy</li>
+<li>Hamming Loss</li>
+<li>Micro F1</li>
+<li>Macro F1</li>
+</ul></li>
+<li>Compare the performance of the state-of-the-art classifiers for:
+<ul>
+<li>Two languages (English and German)</li>
+<li>Two kinds of features (tf-idf and incidence)</li>
+<li>Three flavours of multilable classification algorithms (Binary Relevance, Label Powerset, Classifier Chain)</li>
+<li>Reduced labels</li>
+</ul></li>
+</ul>
+<div id="dataset" class="section level3">
+<h3><span class="header">Dataset</span></h3>
+<p>We have considered - European Union law documents (EUR-Lex).<br />
+The <a href="https://ec.europa.eu/jrc/en/language-technologies/jrc-eurovoc-indexer#Download%20JEX">data</a> in different European languages is located inside the software distributed by European Union. We have considered two languages- English and German. They can also be downloaded directly from the links below:<br />
+- <a href="https://drive.google.com/drive/folders/1F5HznSWxlZno4iVQSzsXHPhCl-cD644t?usp=sharing">English</a><br />
+- <a href="https://drive.google.com/drive/folders/1TncK4erU2ZJc9v1_-RvwM6fDmkkUYKAk?usp=sharing">German</a></p>
+</div>
+<div id="github-url" class="section level3">
+<h3><span class="header">GitHub URL</span></h3>
+<p>The <a href="https://github.com/suhitaghosh10/EurLexClassification/tree/master/scripts">R scripts</a>, <a href="https://github.com/suhitaghosh10/EurLexClassification/tree/master/reports">process notebook</a> and other resources have been stored at the repository-<br />
+<a href="https://github.com/suhitaghosh10/EurLexClassification.git" class="uri">https://github.com/suhitaghosh10/EurLexClassification.git</a></p>
+</div>
+<div id="screencast" class="section level3">
+<h3><span class="header"> Screencast</span></h3>
+<div class="screencast">
+<p><a href="http://www.youtube.com/watch?v=3ELi5mLlzgM%22Screencast%22" target="_blank"><img src="Figs/eurlex_First_Frame.png" alt="screencast link" /></a></p>
+</div>
+<p> </p>
+</div>
+<div id="team" class="section level3">
+<h3><span class="header"> Team</span></h3>
+<ul>
+<li><a href="https://www.linkedin.com/in/suhitaghosh/">Suhita Ghosh</a><br />
+</li>
+<li><a href="https://github.com/NOOR-JAMALUDEEN">Noor Jamaludeen</a></li>
+</ul>
+</div>
+<div id="r-packages" class="section level3">
+<h3><span class="header"> R packages</span></h3>
+<p>The following packages must be installed in R-Studio.</p>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">## The script installs the necessary packages if not already installed, and then loads them
+packages &lt;-<span class="st"> </span><span class="kw">c</span>(
+  <span class="st">&quot;textstem&quot;</span>,
+  <span class="st">&quot;stringi&quot;</span>,
+  <span class="st">&quot;dplyr&quot;</span>,
+  <span class="st">&quot;data.table&quot;</span>,
+  <span class="st">&quot;tm&quot;</span>,
+  <span class="st">&quot;textclean&quot;</span>,
+  <span class="st">&quot;XML&quot;</span>,
+  <span class="st">&quot;RWeka&quot;</span>,
+  <span class="st">&quot;tidyr&quot;</span>,
+  <span class="st">&quot;tidytext&quot;</span>,
+  <span class="st">&quot;parallel&quot;</span>,
+  <span class="st">&quot;mldr&quot;</span>,
+  <span class="st">&quot;utiml&quot;</span>,
+  <span class="st">&quot;tidytext&quot;</span>,
+  <span class="st">&quot;ggplot2&quot;</span>,
+  <span class="st">&quot;RColorBrewer&quot;</span>,
+  <span class="st">&quot;udpipe&quot;</span>,
+  <span class="st">&quot;kknn&quot;</span>,
+  <span class="st">&quot;xgboost&quot;</span>,
+  <span class="st">&quot;randomForest&quot;</span>,
+  <span class="st">&quot;matrixStats&quot;</span>,
+  <span class="st">&quot;rmarkdown&quot;</span>,
+  <span class="st">&quot;wordcloud&quot;</span>,
+  <span class="st">&quot;ggraph&quot;</span>,
+  <span class="st">&quot;igraph&quot;</span>,
+  <span class="st">&quot;tidyverse&quot;</span>,
+  <span class="st">&quot;gridExtra&quot;</span>,
+  <span class="st">&quot;kableExtra&quot;</span>,
+  <span class="st">&quot;knitr&quot;</span>
+)
+
+verify.packages &lt;-<span class="st"> </span><span class="cf">function</span>(pkg) {
+  new.pkg &lt;-<span class="st"> </span>pkg[<span class="op">!</span>(pkg <span class="op">%in%</span><span class="st"> </span><span class="kw">installed.packages</span>()[, <span class="st">&quot;Package&quot;</span>])]
+  <span class="cf">if</span> (<span class="kw">length</span>(new.pkg))
+    <span class="kw">install.packages</span>(new.pkg, <span class="dt">dependencies =</span> <span class="ot">TRUE</span>)
+  <span class="kw">sapply</span>(pkg, library, <span class="dt">character.only =</span> <span class="ot">TRUE</span>)
+}
+
+<span class="kw">verify.packages</span>(packages)</code></pre></div>
+<div id="references" class="section level4 unnumbered">
+<h4><span class="sub-header"> References</span></h4>
+<div id="refs" class="references">
+<div id="ref-LozaMencia2010">
+<p>1. Loza Mencía E, Fürnkranz J. Efficient multilabel classification algorithms for large-scale problems in the legal domain. In: Francesconi E, Montemagni S, Peters W, Tiscornia D, editors. Semantic processing of legal texts: Where the language of law meets the law of language. Berlin, Heidelberg: Springer Berlin Heidelberg; 2010. pp. 192–215. doi:<a href="https://doi.org/10.1007/978-3-642-12837-0_11">10.1007/978-3-642-12837-0_11</a>.</p>
+</div>
+<div id="ref-Gibaja:2015:TML:2737799.2716262">
+<p>2. Gibaja E, Ventura S. A tutorial on multilabel learning. ACM Comput Surv. 2015;47:52:1–52:38. doi:<a href="https://doi.org/10.1145/2716262">10.1145/2716262</a>.</p>
+</div>
+<div id="ref-charte2015working">
+<p>3. Charte F, Charte D. Working with multilabel datasets in r: The mldr package. R Journal. 2015;7.</p>
+</div>
+<div id="ref-rivolliutiml">
+<p>4. Rivolli A. Utiml: Utilities for multi-label learning, 2016, r package version 0.1. 0. Available: CRAN R-project org/package= utiml.</p>
+</div>
+<div id="ref-godbole2004discriminative">
+<p>5. Godbole S, Sarawagi S. Discriminative methods for multi-labeled classification. In: Pacific-asia conference on knowledge discovery and data mining. Springer; 2004. pp. 22–30.</p>
+</div>
+<div id="ref-boutell2004learning">
+<p>6. Boutell MR, Luo J, Shen X, Brown CM. Learning multi-label scene classification. Pattern recognition. 2004;37:1757–71.</p>
+</div>
+<div id="ref-read2011classifier">
+<p>7. Read J, Pfahringer B, Holmes G, Frank E. Classifier chains for multi-label classification. Machine learning. 2011;85:333.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
