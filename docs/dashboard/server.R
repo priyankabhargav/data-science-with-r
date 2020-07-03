@@ -1,2 +1,0 @@
-server <- function(input, output) {
-}
