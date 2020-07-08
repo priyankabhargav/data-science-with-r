@@ -1,0 +1,2254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>body{background-color:white;}</style>
+<script>(function() {
+  // If window.HTMLWidgets is already defined, then use it; otherwise create a
+  // new object. This allows preceding code to set options that affect the
+  // initialization process (though none currently exist).
+  window.HTMLWidgets = window.HTMLWidgets || {};
+
+  // See if we're running in a viewer pane. If not, we're in a web browser.
+  var viewerMode = window.HTMLWidgets.viewerMode =
+      /\bviewer_pane=1\b/.test(window.location);
+
+  // See if we're running in Shiny mode. If not, it's a static document.
+  // Note that static widgets can appear in both Shiny and static modes, but
+  // obviously, Shiny widgets can only appear in Shiny apps/documents.
+  var shinyMode = window.HTMLWidgets.shinyMode =
+      typeof(window.Shiny) !== "undefined" && !!window.Shiny.outputBindings;
+
+  // We can't count on jQuery being available, so we implement our own
+  // version if necessary.
+  function querySelectorAll(scope, selector) {
+    if (typeof(jQuery) !== "undefined" && scope instanceof jQuery) {
+      return scope.find(selector);
+    }
+    if (scope.querySelectorAll) {
+      return scope.querySelectorAll(selector);
+    }
+  }
+
+  function asArray(value) {
+    if (value === null)
+      return [];
+    if ($.isArray(value))
+      return value;
+    return [value];
+  }
+
+  // Implement jQuery's extend
+  function extend(target /*, ... */) {
+    if (arguments.length == 1) {
+      return target;
+    }
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i];
+      for (var prop in source) {
+        if (source.hasOwnProperty(prop)) {
+          target[prop] = source[prop];
+        }
+      }
+    }
+    return target;
+  }
+
+  // IE8 doesn't support Array.forEach.
+  function forEach(values, callback, thisArg) {
+    if (values.forEach) {
+      values.forEach(callback, thisArg);
+    } else {
+      for (var i = 0; i < values.length; i++) {
+        callback.call(thisArg, values[i], i, values);
+      }
+    }
+  }
+
+  // Replaces the specified method with the return value of funcSource.
+  //
+  // Note that funcSource should not BE the new method, it should be a function
+  // that RETURNS the new method. funcSource receives a single argument that is
+  // the overridden method, it can be called from the new method. The overridden
+  // method can be called like a regular function, it has the target permanently
+  // bound to it so "this" will work correctly.
+  function overrideMethod(target, methodName, funcSource) {
+    var superFunc = target[methodName] || function() {};
+    var superFuncBound = function() {
+      return superFunc.apply(target, arguments);
+    };
+    target[methodName] = funcSource(superFuncBound);
+  }
+
+  // Add a method to delegator that, when invoked, calls
+  // delegatee.methodName. If there is no such method on
+  // the delegatee, but there was one on delegator before
+  // delegateMethod was called, then the original version
+  // is invoked instead.
+  // For example:
+  //
+  // var a = {
+  //   method1: function() { console.log('a1'); }
+  //   method2: function() { console.log('a2'); }
+  // };
+  // var b = {
+  //   method1: function() { console.log('b1'); }
+  // };
+  // delegateMethod(a, b, "method1");
+  // delegateMethod(a, b, "method2");
+  // a.method1();
+  // a.method2();
+  //
+  // The output would be "b1", "a2".
+  function delegateMethod(delegator, delegatee, methodName) {
+    var inherited = delegator[methodName];
+    delegator[methodName] = function() {
+      var target = delegatee;
+      var method = delegatee[methodName];
+
+      // The method doesn't exist on the delegatee. Instead,
+      // call the method on the delegator, if it exists.
+      if (!method) {
+        target = delegator;
+        method = inherited;
+      }
+
+      if (method) {
+        return method.apply(target, arguments);
+      }
+    };
+  }
+
+  // Implement a vague facsimilie of jQuery's data method
+  function elementData(el, name, value) {
+    if (arguments.length == 2) {
+      return el["htmlwidget_data_" + name];
+    } else if (arguments.length == 3) {
+      el["htmlwidget_data_" + name] = value;
+      return el;
+    } else {
+      throw new Error("Wrong number of arguments for elementData: " +
+        arguments.length);
+    }
+  }
+
+  // http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+  function escapeRegExp(str) {
+    return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+  }
+
+  function hasClass(el, className) {
+    var re = new RegExp("\\b" + escapeRegExp(className) + "\\b");
+    return re.test(el.className);
+  }
+
+  // elements - array (or array-like object) of HTML elements
+  // className - class name to test for
+  // include - if true, only return elements with given className;
+  //   if false, only return elements *without* given className
+  function filterByClass(elements, className, include) {
+    var results = [];
+    for (var i = 0; i < elements.length; i++) {
+      if (hasClass(elements[i], className) == include)
+        results.push(elements[i]);
+    }
+    return results;
+  }
+
+  function on(obj, eventName, func) {
+    if (obj.addEventListener) {
+      obj.addEventListener(eventName, func, false);
+    } else if (obj.attachEvent) {
+      obj.attachEvent(eventName, func);
+    }
+  }
+
+  function off(obj, eventName, func) {
+    if (obj.removeEventListener)
+      obj.removeEventListener(eventName, func, false);
+    else if (obj.detachEvent) {
+      obj.detachEvent(eventName, func);
+    }
+  }
+
+  // Translate array of values to top/right/bottom/left, as usual with
+  // the "padding" CSS property
+  // https://developer.mozilla.org/en-US/docs/Web/CSS/padding
+  function unpackPadding(value) {
+    if (typeof(value) === "number")
+      value = [value];
+    if (value.length === 1) {
+      return {top: value[0], right: value[0], bottom: value[0], left: value[0]};
+    }
+    if (value.length === 2) {
+      return {top: value[0], right: value[1], bottom: value[0], left: value[1]};
+    }
+    if (value.length === 3) {
+      return {top: value[0], right: value[1], bottom: value[2], left: value[1]};
+    }
+    if (value.length === 4) {
+      return {top: value[0], right: value[1], bottom: value[2], left: value[3]};
+    }
+  }
+
+  // Convert an unpacked padding object to a CSS value
+  function paddingToCss(paddingObj) {
+    return paddingObj.top + "px " + paddingObj.right + "px " + paddingObj.bottom + "px " + paddingObj.left + "px";
+  }
+
+  // Makes a number suitable for CSS
+  function px(x) {
+    if (typeof(x) === "number")
+      return x + "px";
+    else
+      return x;
+  }
+
+  // Retrieves runtime widget sizing information for an element.
+  // The return value is either null, or an object with fill, padding,
+  // defaultWidth, defaultHeight fields.
+  function sizingPolicy(el) {
+    var sizingEl = document.querySelector("script[data-for='" + el.id + "'][type='application/htmlwidget-sizing']");
+    if (!sizingEl)
+      return null;
+    var sp = JSON.parse(sizingEl.textContent || sizingEl.text || "{}");
+    if (viewerMode) {
+      return sp.viewer;
+    } else {
+      return sp.browser;
+    }
+  }
+
+  // @param tasks Array of strings (or falsy value, in which case no-op).
+  //   Each element must be a valid JavaScript expression that yields a
+  //   function. Or, can be an array of objects with "code" and "data"
+  //   properties; in this case, the "code" property should be a string
+  //   of JS that's an expr that yields a function, and "data" should be
+  //   an object that will be added as an additional argument when that
+  //   function is called.
+  // @param target The object that will be "this" for each function
+  //   execution.
+  // @param args Array of arguments to be passed to the functions. (The
+  //   same arguments will be passed to all functions.)
+  function evalAndRun(tasks, target, args) {
+    if (tasks) {
+      forEach(tasks, function(task) {
+        var theseArgs = args;
+        if (typeof(task) === "object") {
+          theseArgs = theseArgs.concat([task.data]);
+          task = task.code;
+        }
+        var taskFunc = tryEval(task);
+        if (typeof(taskFunc) !== "function") {
+          throw new Error("Task must be a function! Source:\n" + task);
+        }
+        taskFunc.apply(target, theseArgs);
+      });
+    }
+  }
+
+  // Attempt eval() both with and without enclosing in parentheses.
+  // Note that enclosing coerces a function declaration into
+  // an expression that eval() can parse
+  // (otherwise, a SyntaxError is thrown)
+  function tryEval(code) {
+    var result = null;
+    try {
+      result = eval(code);
+    } catch(error) {
+      if (!error instanceof SyntaxError) {
+        throw error;
+      }
+      try {
+        result = eval("(" + code + ")");
+      } catch(e) {
+        if (e instanceof SyntaxError) {
+          throw error;
+        } else {
+          throw e;
+        }
+      }
+    }
+    return result;
+  }
+
+  function initSizing(el) {
+    var sizing = sizingPolicy(el);
+    if (!sizing)
+      return;
+
+    var cel = document.getElementById("htmlwidget_container");
+    if (!cel)
+      return;
+
+    if (typeof(sizing.padding) !== "undefined") {
+      document.body.style.margin = "0";
+      document.body.style.padding = paddingToCss(unpackPadding(sizing.padding));
+    }
+
+    if (sizing.fill) {
+      document.body.style.overflow = "hidden";
+      document.body.style.width = "100%";
+      document.body.style.height = "100%";
+      document.documentElement.style.width = "100%";
+      document.documentElement.style.height = "100%";
+      if (cel) {
+        cel.style.position = "absolute";
+        var pad = unpackPadding(sizing.padding);
+        cel.style.top = pad.top + "px";
+        cel.style.right = pad.right + "px";
+        cel.style.bottom = pad.bottom + "px";
+        cel.style.left = pad.left + "px";
+        el.style.width = "100%";
+        el.style.height = "100%";
+      }
+
+      return {
+        getWidth: function() { return cel.offsetWidth; },
+        getHeight: function() { return cel.offsetHeight; }
+      };
+
+    } else {
+      el.style.width = px(sizing.width);
+      el.style.height = px(sizing.height);
+
+      return {
+        getWidth: function() { return el.offsetWidth; },
+        getHeight: function() { return el.offsetHeight; }
+      };
+    }
+  }
+
+  // Default implementations for methods
+  var defaults = {
+    find: function(scope) {
+      return querySelectorAll(scope, "." + this.name);
+    },
+    renderError: function(el, err) {
+      var $el = $(el);
+
+      this.clearError(el);
+
+      // Add all these error classes, as Shiny does
+      var errClass = "shiny-output-error";
+      if (err.type !== null) {
+        // use the classes of the error condition as CSS class names
+        errClass = errClass + " " + $.map(asArray(err.type), function(type) {
+          return errClass + "-" + type;
+        }).join(" ");
+      }
+      errClass = errClass + " htmlwidgets-error";
+
+      // Is el inline or block? If inline or inline-block, just display:none it
+      // and add an inline error.
+      var display = $el.css("display");
+      $el.data("restore-display-mode", display);
+
+      if (display === "inline" || display === "inline-block") {
+        $el.hide();
+        if (err.message !== "") {
+          var errorSpan = $("<span>").addClass(errClass);
+          errorSpan.text(err.message);
+          $el.after(errorSpan);
+        }
+      } else if (display === "block") {
+        // If block, add an error just after the el, set visibility:none on the
+        // el, and position the error to be on top of the el.
+        // Mark it with a unique ID and CSS class so we can remove it later.
+        $el.css("visibility", "hidden");
+        if (err.message !== "") {
+          var errorDiv = $("<div>").addClass(errClass).css("position", "absolute")
+            .css("top", el.offsetTop)
+            .css("left", el.offsetLeft)
+            // setting width can push out the page size, forcing otherwise
+            // unnecessary scrollbars to appear and making it impossible for
+            // the element to shrink; so use max-width instead
+            .css("maxWidth", el.offsetWidth)
+            .css("height", el.offsetHeight);
+          errorDiv.text(err.message);
+          $el.after(errorDiv);
+
+          // Really dumb way to keep the size/position of the error in sync with
+          // the parent element as the window is resized or whatever.
+          var intId = setInterval(function() {
+            if (!errorDiv[0].parentElement) {
+              clearInterval(intId);
+              return;
+            }
+            errorDiv
+              .css("top", el.offsetTop)
+              .css("left", el.offsetLeft)
+              .css("maxWidth", el.offsetWidth)
+              .css("height", el.offsetHeight);
+          }, 500);
+        }
+      }
+    },
+    clearError: function(el) {
+      var $el = $(el);
+      var display = $el.data("restore-display-mode");
+      $el.data("restore-display-mode", null);
+
+      if (display === "inline" || display === "inline-block") {
+        if (display)
+          $el.css("display", display);
+        $(el.nextSibling).filter(".htmlwidgets-error").remove();
+      } else if (display === "block"){
+        $el.css("visibility", "inherit");
+        $(el.nextSibling).filter(".htmlwidgets-error").remove();
+      }
+    },
+    sizing: {}
+  };
+
+  // Called by widget bindings to register a new type of widget. The definition
+  // object can contain the following properties:
+  // - name (required) - A string indicating the binding name, which will be
+  //   used by default as the CSS classname to look for.
+  // - initialize (optional) - A function(el) that will be called once per
+  //   widget element; if a value is returned, it will be passed as the third
+  //   value to renderValue.
+  // - renderValue (required) - A function(el, data, initValue) that will be
+  //   called with data. Static contexts will cause this to be called once per
+  //   element; Shiny apps will cause this to be called multiple times per
+  //   element, as the data changes.
+  window.HTMLWidgets.widget = function(definition) {
+    if (!definition.name) {
+      throw new Error("Widget must have a name");
+    }
+    if (!definition.type) {
+      throw new Error("Widget must have a type");
+    }
+    // Currently we only support output widgets
+    if (definition.type !== "output") {
+      throw new Error("Unrecognized widget type '" + definition.type + "'");
+    }
+    // TODO: Verify that .name is a valid CSS classname
+
+    // Support new-style instance-bound definitions. Old-style class-bound
+    // definitions have one widget "object" per widget per type/class of
+    // widget; the renderValue and resize methods on such widget objects
+    // take el and instance arguments, because the widget object can't
+    // store them. New-style instance-bound definitions have one widget
+    // object per widget instance; the definition that's passed in doesn't
+    // provide renderValue or resize methods at all, just the single method
+    //   factory(el, width, height)
+    // which returns an object that has renderValue(x) and resize(w, h).
+    // This enables a far more natural programming style for the widget
+    // author, who can store per-instance state using either OO-style
+    // instance fields or functional-style closure variables (I guess this
+    // is in contrast to what can only be called C-style pseudo-OO which is
+    // what we required before).
+    if (definition.factory) {
+      definition = createLegacyDefinitionAdapter(definition);
+    }
+
+    if (!definition.renderValue) {
+      throw new Error("Widget must have a renderValue function");
+    }
+
+    // For static rendering (non-Shiny), use a simple widget registration
+    // scheme. We also use this scheme for Shiny apps/documents that also
+    // contain static widgets.
+    window.HTMLWidgets.widgets = window.HTMLWidgets.widgets || [];
+    // Merge defaults into the definition; don't mutate the original definition.
+    var staticBinding = extend({}, defaults, definition);
+    overrideMethod(staticBinding, "find", function(superfunc) {
+      return function(scope) {
+        var results = superfunc(scope);
+        // Filter out Shiny outputs, we only want the static kind
+        return filterByClass(results, "html-widget-output", false);
+      };
+    });
+    window.HTMLWidgets.widgets.push(staticBinding);
+
+    if (shinyMode) {
+      // Shiny is running. Register the definition with an output binding.
+      // The definition itself will not be the output binding, instead
+      // we will make an output binding object that delegates to the
+      // definition. This is because we foolishly used the same method
+      // name (renderValue) for htmlwidgets definition and Shiny bindings
+      // but they actually have quite different semantics (the Shiny
+      // bindings receive data that includes lots of metadata that it
+      // strips off before calling htmlwidgets renderValue). We can't
+      // just ignore the difference because in some widgets it's helpful
+      // to call this.renderValue() from inside of resize(), and if
+      // we're not delegating, then that call will go to the Shiny
+      // version instead of the htmlwidgets version.
+
+      // Merge defaults with definition, without mutating either.
+      var bindingDef = extend({}, defaults, definition);
+
+      // This object will be our actual Shiny binding.
+      var shinyBinding = new Shiny.OutputBinding();
+
+      // With a few exceptions, we'll want to simply use the bindingDef's
+      // version of methods if they are available, otherwise fall back to
+      // Shiny's defaults. NOTE: If Shiny's output bindings gain additional
+      // methods in the future, and we want them to be overrideable by
+      // HTMLWidget binding definitions, then we'll need to add them to this
+      // list.
+      delegateMethod(shinyBinding, bindingDef, "getId");
+      delegateMethod(shinyBinding, bindingDef, "onValueChange");
+      delegateMethod(shinyBinding, bindingDef, "onValueError");
+      delegateMethod(shinyBinding, bindingDef, "renderError");
+      delegateMethod(shinyBinding, bindingDef, "clearError");
+      delegateMethod(shinyBinding, bindingDef, "showProgress");
+
+      // The find, renderValue, and resize are handled differently, because we
+      // want to actually decorate the behavior of the bindingDef methods.
+
+      shinyBinding.find = function(scope) {
+        var results = bindingDef.find(scope);
+
+        // Only return elements that are Shiny outputs, not static ones
+        var dynamicResults = results.filter(".html-widget-output");
+
+        // It's possible that whatever caused Shiny to think there might be
+        // new dynamic outputs, also caused there to be new static outputs.
+        // Since there might be lots of different htmlwidgets bindings, we
+        // schedule execution for later--no need to staticRender multiple
+        // times.
+        if (results.length !== dynamicResults.length)
+          scheduleStaticRender();
+
+        return dynamicResults;
+      };
+
+      // Wrap renderValue to handle initialization, which unfortunately isn't
+      // supported natively by Shiny at the time of this writing.
+
+      shinyBinding.renderValue = function(el, data) {
+        Shiny.renderDependencies(data.deps);
+        // Resolve strings marked as javascript literals to objects
+        if (!(data.evals instanceof Array)) data.evals = [data.evals];
+        for (var i = 0; data.evals && i < data.evals.length; i++) {
+          window.HTMLWidgets.evaluateStringMember(data.x, data.evals[i]);
+        }
+        if (!bindingDef.renderOnNullValue) {
+          if (data.x === null) {
+            el.style.visibility = "hidden";
+            return;
+          } else {
+            el.style.visibility = "inherit";
+          }
+        }
+        if (!elementData(el, "initialized")) {
+          initSizing(el);
+
+          elementData(el, "initialized", true);
+          if (bindingDef.initialize) {
+            var result = bindingDef.initialize(el, el.offsetWidth,
+              el.offsetHeight);
+            elementData(el, "init_result", result);
+          }
+        }
+        bindingDef.renderValue(el, data.x, elementData(el, "init_result"));
+        evalAndRun(data.jsHooks.render, elementData(el, "init_result"), [el, data.x]);
+      };
+
+      // Only override resize if bindingDef implements it
+      if (bindingDef.resize) {
+        shinyBinding.resize = function(el, width, height) {
+          // Shiny can call resize before initialize/renderValue have been
+          // called, which doesn't make sense for widgets.
+          if (elementData(el, "initialized")) {
+            bindingDef.resize(el, width, height, elementData(el, "init_result"));
+          }
+        };
+      }
+
+      Shiny.outputBindings.register(shinyBinding, bindingDef.name);
+    }
+  };
+
+  var scheduleStaticRenderTimerId = null;
+  function scheduleStaticRender() {
+    if (!scheduleStaticRenderTimerId) {
+      scheduleStaticRenderTimerId = setTimeout(function() {
+        scheduleStaticRenderTimerId = null;
+        window.HTMLWidgets.staticRender();
+      }, 1);
+    }
+  }
+
+  // Render static widgets after the document finishes loading
+  // Statically render all elements that are of this widget's class
+  window.HTMLWidgets.staticRender = function() {
+    var bindings = window.HTMLWidgets.widgets || [];
+    forEach(bindings, function(binding) {
+      var matches = binding.find(document.documentElement);
+      forEach(matches, function(el) {
+        var sizeObj = initSizing(el, binding);
+
+        if (hasClass(el, "html-widget-static-bound"))
+          return;
+        el.className = el.className + " html-widget-static-bound";
+
+        var initResult;
+        if (binding.initialize) {
+          initResult = binding.initialize(el,
+            sizeObj ? sizeObj.getWidth() : el.offsetWidth,
+            sizeObj ? sizeObj.getHeight() : el.offsetHeight
+          );
+          elementData(el, "init_result", initResult);
+        }
+
+        if (binding.resize) {
+          var lastSize = {
+            w: sizeObj ? sizeObj.getWidth() : el.offsetWidth,
+            h: sizeObj ? sizeObj.getHeight() : el.offsetHeight
+          };
+          var resizeHandler = function(e) {
+            var size = {
+              w: sizeObj ? sizeObj.getWidth() : el.offsetWidth,
+              h: sizeObj ? sizeObj.getHeight() : el.offsetHeight
+            };
+            if (size.w === 0 && size.h === 0)
+              return;
+            if (size.w === lastSize.w && size.h === lastSize.h)
+              return;
+            lastSize = size;
+            binding.resize(el, size.w, size.h, initResult);
+          };
+
+          on(window, "resize", resizeHandler);
+
+          // This is needed for cases where we're running in a Shiny
+          // app, but the widget itself is not a Shiny output, but
+          // rather a simple static widget. One example of this is
+          // an rmarkdown document that has runtime:shiny and widget
+          // that isn't in a render function. Shiny only knows to
+          // call resize handlers for Shiny outputs, not for static
+          // widgets, so we do it ourselves.
+          if (window.jQuery) {
+            window.jQuery(document).on(
+              "shown.htmlwidgets shown.bs.tab.htmlwidgets shown.bs.collapse.htmlwidgets",
+              resizeHandler
+            );
+            window.jQuery(document).on(
+              "hidden.htmlwidgets hidden.bs.tab.htmlwidgets hidden.bs.collapse.htmlwidgets",
+              resizeHandler
+            );
+          }
+
+          // This is needed for the specific case of ioslides, which
+          // flips slides between display:none and display:block.
+          // Ideally we would not have to have ioslide-specific code
+          // here, but rather have ioslides raise a generic event,
+          // but the rmarkdown package just went to CRAN so the
+          // window to getting that fixed may be long.
+          if (window.addEventListener) {
+            // It's OK to limit this to window.addEventListener
+            // browsers because ioslides itself only supports
+            // such browsers.
+            on(document, "slideenter", resizeHandler);
+            on(document, "slideleave", resizeHandler);
+          }
+        }
+
+        var scriptData = document.querySelector("script[data-for='" + el.id + "'][type='application/json']");
+        if (scriptData) {
+          var data = JSON.parse(scriptData.textContent || scriptData.text);
+          // Resolve strings marked as javascript literals to objects
+          if (!(data.evals instanceof Array)) data.evals = [data.evals];
+          for (var k = 0; data.evals && k < data.evals.length; k++) {
+            window.HTMLWidgets.evaluateStringMember(data.x, data.evals[k]);
+          }
+          binding.renderValue(el, data.x, initResult);
+          evalAndRun(data.jsHooks.render, initResult, [el, data.x]);
+        }
+      });
+    });
+
+    invokePostRenderHandlers();
+  }
+
+
+  function has_jQuery3() {
+    if (!window.jQuery) {
+      return false;
+    }
+    var $version = window.jQuery.fn.jquery;
+    var $major_version = parseInt($version.split(".")[0]);
+    return $major_version >= 3;
+  }
+
+  /*
+  / Shiny 1.4 bumped jQuery from 1.x to 3.x which means jQuery's
+  / on-ready handler (i.e., $(fn)) is now asyncronous (i.e., it now
+  / really means $(setTimeout(fn)).
+  / https://jquery.com/upgrade-guide/3.0/#breaking-change-document-ready-handlers-are-now-asynchronous
+  /
+  / Since Shiny uses $() to schedule initShiny, shiny>=1.4 calls initShiny
+  / one tick later than it did before, which means staticRender() is
+  / called renderValue() earlier than (advanced) widget authors might be expecting.
+  / https://github.com/rstudio/shiny/issues/2630
+  /
+  / For a concrete example, leaflet has some methods (e.g., updateBounds)
+  / which reference Shiny methods registered in initShiny (e.g., setInputValue).
+  / Since leaflet is privy to this life-cycle, it knows to use setTimeout() to
+  / delay execution of those methods (until Shiny methods are ready)
+  / https://github.com/rstudio/leaflet/blob/18ec981/javascript/src/index.js#L266-L268
+  /
+  / Ideally widget authors wouldn't need to use this setTimeout() hack that
+  / leaflet uses to call Shiny methods on a staticRender(). In the long run,
+  / the logic initShiny should be broken up so that method registration happens
+  / right away, but binding happens later.
+  */
+  function maybeStaticRenderLater() {
+    if (shinyMode && has_jQuery3()) {
+      window.jQuery(window.HTMLWidgets.staticRender);
+    } else {
+      window.HTMLWidgets.staticRender();
+    }
+  }
+
+  if (document.addEventListener) {
+    document.addEventListener("DOMContentLoaded", function() {
+      document.removeEventListener("DOMContentLoaded", arguments.callee, false);
+      maybeStaticRenderLater();
+    }, false);
+  } else if (document.attachEvent) {
+    document.attachEvent("onreadystatechange", function() {
+      if (document.readyState === "complete") {
+        document.detachEvent("onreadystatechange", arguments.callee);
+        maybeStaticRenderLater();
+      }
+    });
+  }
+
+
+  window.HTMLWidgets.getAttachmentUrl = function(depname, key) {
+    // If no key, default to the first item
+    if (typeof(key) === "undefined")
+      key = 1;
+
+    var link = document.getElementById(depname + "-" + key + "-attachment");
+    if (!link) {
+      throw new Error("Attachment " + depname + "/" + key + " not found in document");
+    }
+    return link.getAttribute("href");
+  };
+
+  window.HTMLWidgets.dataframeToD3 = function(df) {
+    var names = [];
+    var length;
+    for (var name in df) {
+        if (df.hasOwnProperty(name))
+            names.push(name);
+        if (typeof(df[name]) !== "object" || typeof(df[name].length) === "undefined") {
+            throw new Error("All fields must be arrays");
+        } else if (typeof(length) !== "undefined" && length !== df[name].length) {
+            throw new Error("All fields must be arrays of the same length");
+        }
+        length = df[name].length;
+    }
+    var results = [];
+    var item;
+    for (var row = 0; row < length; row++) {
+        item = {};
+        for (var col = 0; col < names.length; col++) {
+            item[names[col]] = df[names[col]][row];
+        }
+        results.push(item);
+    }
+    return results;
+  };
+
+  window.HTMLWidgets.transposeArray2D = function(array) {
+      if (array.length === 0) return array;
+      var newArray = array[0].map(function(col, i) {
+          return array.map(function(row) {
+              return row[i]
+          })
+      });
+      return newArray;
+  };
+  // Split value at splitChar, but allow splitChar to be escaped
+  // using escapeChar. Any other characters escaped by escapeChar
+  // will be included as usual (including escapeChar itself).
+  function splitWithEscape(value, splitChar, escapeChar) {
+    var results = [];
+    var escapeMode = false;
+    var currentResult = "";
+    for (var pos = 0; pos < value.length; pos++) {
+      if (!escapeMode) {
+        if (value[pos] === splitChar) {
+          results.push(currentResult);
+          currentResult = "";
+        } else if (value[pos] === escapeChar) {
+          escapeMode = true;
+        } else {
+          currentResult += value[pos];
+        }
+      } else {
+        currentResult += value[pos];
+        escapeMode = false;
+      }
+    }
+    if (currentResult !== "") {
+      results.push(currentResult);
+    }
+    return results;
+  }
+  // Function authored by Yihui/JJ Allaire
+  window.HTMLWidgets.evaluateStringMember = function(o, member) {
+    var parts = splitWithEscape(member, '.', '\\');
+    for (var i = 0, l = parts.length; i < l; i++) {
+      var part = parts[i];
+      // part may be a character or 'numeric' member name
+      if (o !== null && typeof o === "object" && part in o) {
+        if (i == (l - 1)) { // if we are at the end of the line then evalulate
+          if (typeof o[part] === "string")
+            o[part] = tryEval(o[part]);
+        } else { // otherwise continue to next embedded object
+          o = o[part];
+        }
+      }
+    }
+  };
+
+  // Retrieve the HTMLWidget instance (i.e. the return value of an
+  // HTMLWidget binding's initialize() or factory() function)
+  // associated with an element, or null if none.
+  window.HTMLWidgets.getInstance = function(el) {
+    return elementData(el, "init_result");
+  };
+
+  // Finds the first element in the scope that matches the selector,
+  // and returns the HTMLWidget instance (i.e. the return value of
+  // an HTMLWidget binding's initialize() or factory() function)
+  // associated with that element, if any. If no element matches the
+  // selector, or the first matching element has no HTMLWidget
+  // instance associated with it, then null is returned.
+  //
+  // The scope argument is optional, and defaults to window.document.
+  window.HTMLWidgets.find = function(scope, selector) {
+    if (arguments.length == 1) {
+      selector = scope;
+      scope = document;
+    }
+
+    var el = scope.querySelector(selector);
+    if (el === null) {
+      return null;
+    } else {
+      return window.HTMLWidgets.getInstance(el);
+    }
+  };
+
+  // Finds all elements in the scope that match the selector, and
+  // returns the HTMLWidget instances (i.e. the return values of
+  // an HTMLWidget binding's initialize() or factory() function)
+  // associated with the elements, in an array. If elements that
+  // match the selector don't have an associated HTMLWidget
+  // instance, the returned array will contain nulls.
+  //
+  // The scope argument is optional, and defaults to window.document.
+  window.HTMLWidgets.findAll = function(scope, selector) {
+    if (arguments.length == 1) {
+      selector = scope;
+      scope = document;
+    }
+
+    var nodes = scope.querySelectorAll(selector);
+    var results = [];
+    for (var i = 0; i < nodes.length; i++) {
+      results.push(window.HTMLWidgets.getInstance(nodes[i]));
+    }
+    return results;
+  };
+
+  var postRenderHandlers = [];
+  function invokePostRenderHandlers() {
+    while (postRenderHandlers.length) {
+      var handler = postRenderHandlers.shift();
+      if (handler) {
+        handler();
+      }
+    }
+  }
+
+  // Register the given callback function to be invoked after the
+  // next time static widgets are rendered.
+  window.HTMLWidgets.addPostRenderHandler = function(callback) {
+    postRenderHandlers.push(callback);
+  };
+
+  // Takes a new-style instance-bound definition, and returns an
+  // old-style class-bound definition. This saves us from having
+  // to rewrite all the logic in this file to accomodate both
+  // types of definitions.
+  function createLegacyDefinitionAdapter(defn) {
+    var result = {
+      name: defn.name,
+      type: defn.type,
+      initialize: function(el, width, height) {
+        return defn.factory(el, width, height);
+      },
+      renderValue: function(el, x, instance) {
+        return instance.renderValue(x);
+      },
+      resize: function(el, width, height, instance) {
+        return instance.resize(width, height);
+      }
+    };
+
+    if (defn.find)
+      result.find = defn.find;
+    if (defn.renderError)
+      result.renderError = defn.renderError;
+    if (defn.clearError)
+      result.clearError = defn.clearError;
+
+    return result;
+  }
+})();
+
+</script>
+<style type="text/css">#wcLabel {position: absolute;border: 2px solid #fff;box-shadow: 0 0 4px 0 #008;padding: 2px;pointer-events: none; }#wcSpan {position: absolute;top: 100%;left: 0;background-color: rgba(255, 255, 255, 0.8);color: #333;margin-top: 6px;padding: 0 0.5em;border-radius: 0.5em;white-space: nowrap; }</style>
+<script>/*!
+ * wordcloud2.js
+ * http://timdream.org/wordcloud2.js/
+ *
+ * Copyright 2011 - 2013 Tim Chien
+ * Released under the MIT license
+ */
+
+'use strict';
+
+// setImmediate
+if (!window.setImmediate) {
+  window.setImmediate = (function setupSetImmediate() {
+    return window.msSetImmediate ||
+    window.webkitSetImmediate ||
+    window.mozSetImmediate ||
+    window.oSetImmediate ||
+    (function setupSetZeroTimeout() {
+      if (!window.postMessage || !window.addEventListener) {
+        return null;
+      }
+
+      var callbacks = [undefined];
+      var message = 'zero-timeout-message';
+
+      // Like setTimeout, but only takes a function argument.  There's
+      // no time argument (always zero) and no arguments (you have to
+      // use a closure).
+      var setZeroTimeout = function setZeroTimeout(callback) {
+        var id = callbacks.length;
+        callbacks.push(callback);
+        window.postMessage(message + id.toString(36), '*');
+
+        return id;
+      };
+
+      window.addEventListener('message', function setZeroTimeoutMessage(evt) {
+        // Skipping checking event source, retarded IE confused this window
+        // object with another in the presence of iframe
+        if (typeof evt.data !== 'string' ||
+            evt.data.substr(0, message.length) !== message/* ||
+            evt.source !== window */) {
+          return;
+        }
+
+        evt.stopImmediatePropagation();
+
+        var id = parseInt(evt.data.substr(message.length), 36);
+        if (!callbacks[id]) {
+          return;
+        }
+
+        callbacks[id]();
+        callbacks[id] = undefined;
+      }, true);
+
+      /* specify clearImmediate() here since we need the scope */
+      window.clearImmediate = function clearZeroTimeout(id) {
+        if (!callbacks[id]) {
+          return;
+        }
+
+        callbacks[id] = undefined;
+      };
+
+      return setZeroTimeout;
+    })() ||
+    // fallback
+    function setImmediateFallback(fn) {
+      window.setTimeout(fn, 0);
+    };
+  })();
+}
+
+if (!window.clearImmediate) {
+  window.clearImmediate = (function setupClearImmediate() {
+    return window.msClearImmediate ||
+    window.webkitClearImmediate ||
+    window.mozClearImmediate ||
+    window.oClearImmediate ||
+    // "clearZeroTimeout" is implement on the previous block ||
+    // fallback
+    function clearImmediateFallback(timer) {
+      window.clearTimeout(timer);
+    };
+  })();
+}
+
+(function(global) {
+
+  // Check if WordCloud can run on this browser
+  var isSupported = (function isSupported() {
+    var canvas = document.createElement('canvas');
+    if (!canvas || !canvas.getContext) {
+      return false;
+    }
+
+    var ctx = canvas.getContext('2d');
+    if (!ctx.getImageData) {
+      return false;
+    }
+    if (!ctx.fillText) {
+      return false;
+    }
+
+    if (!Array.prototype.some) {
+      return false;
+    }
+    if (!Array.prototype.push) {
+      return false;
+    }
+
+    return true;
+  }());
+
+  // Find out if the browser impose minium font size by
+  // drawing small texts on a canvas and measure it's width.
+  var minFontSize = (function getMinFontSize() {
+    if (!isSupported) {
+      return;
+    }
+
+    var ctx = document.createElement('canvas').getContext('2d');
+
+    // start from 20
+    var size = 20;
+
+    // two sizes to measure
+    var hanWidth, mWidth;
+
+    while (size) {
+      ctx.font = size.toString(10) + 'px sans-serif';
+      if ((ctx.measureText('\uFF37').width === hanWidth) &&
+          (ctx.measureText('m').width) === mWidth) {
+        return (size + 1);
+      }
+
+      hanWidth = ctx.measureText('\uFF37').width;
+      mWidth = ctx.measureText('m').width;
+
+      size--;
+    }
+
+    return 0;
+  })();
+
+  // Based on http://jsfromhell.com/array/shuffle
+  var shuffleArray = function shuffleArray(arr) {
+    for (var j, x, i = arr.length; i;
+      j = Math.floor(Math.random() * i),
+      x = arr[--i], arr[i] = arr[j],
+      arr[j] = x) {}
+    return arr;
+  };
+
+  var WordCloud = function WordCloud(elements, options) {
+    if (!isSupported) {
+      return;
+    }
+
+    if (!Array.isArray(elements)) {
+      elements = [elements];
+    }
+
+    elements.forEach(function(el, i) {
+      if (typeof el === 'string') {
+        elements[i] = document.getElementById(el);
+        if (!elements[i]) {
+          throw 'The element id specified is not found.';
+        }
+      } else if (!el.tagName && !el.appendChild) {
+        throw 'You must pass valid HTML elements, or ID of the element.';
+      }
+    });
+
+    /* Default values to be overwritten by options object */
+    var settings = {
+      list: [],
+      fontFamily: '"Trebuchet MS", "Heiti TC", "微軟正黑體", ' +
+                  '"Arial Unicode MS", "Droid Fallback Sans", sans-serif',
+      fontWeight: 'normal',
+      color: 'random-dark',
+      minSize: 0, // 0 to disable
+      weightFactor: 1,
+      clearCanvas: true,
+      backgroundColor: '#fff',  // opaque white = rgba(255, 255, 255, 1)
+
+      gridSize: 8,
+      origin: null,
+
+      drawMask: false,
+      maskColor: 'rgba(255,0,0,0.3)',
+      maskGapWidth: 0.3,
+
+      wait: 0,
+      abortThreshold: 0, // disabled
+      abort: function noop() {},
+
+      minRotation: - Math.PI / 2,
+      maxRotation: Math.PI / 2,
+
+      shuffle: true,
+      rotateRatio: 0.1,
+
+      shape: 'circle',
+      ellipticity: 0.65,
+
+      classes: null,
+
+      hover: null,
+      click: null
+    };
+
+    if (options) {
+      for (var key in options) {
+        if (key in settings) {
+          settings[key] = options[key];
+        }
+      }
+    }
+
+    /* Convert weightFactor into a function */
+    if (typeof settings.weightFactor !== 'function') {
+      var factor = settings.weightFactor;
+      settings.weightFactor = function weightFactor(pt) {
+        return pt * factor; //in px
+      };
+    }
+
+    /* Convert shape into a function */
+    if (typeof settings.shape !== 'function') {
+      switch (settings.shape) {
+        case 'circle':
+        /* falls through */
+        default:
+          // 'circle' is the default and a shortcut in the code loop.
+          settings.shape = 'circle';
+          break;
+
+        case 'cardioid':
+          settings.shape = function shapeCardioid(theta) {
+            return 1 - Math.sin(theta);
+          };
+          break;
+
+        /*
+
+        To work out an X-gon, one has to calculate "m",
+        where 1/(cos(2*PI/X)+m*sin(2*PI/X)) = 1/(cos(0)+m*sin(0))
+        http://www.wolframalpha.com/input/?i=1%2F%28cos%282*PI%2FX%29%2Bm*sin%28
+        2*PI%2FX%29%29+%3D+1%2F%28cos%280%29%2Bm*sin%280%29%29
+
+        Copy the solution into polar equation r = 1/(cos(t') + m*sin(t'))
+        where t' equals to mod(t, 2PI/X);
+
+        */
+
+        case 'diamond':
+        case 'square':
+          // http://www.wolframalpha.com/input/?i=plot+r+%3D+1%2F%28cos%28mod+
+          // %28t%2C+PI%2F2%29%29%2Bsin%28mod+%28t%2C+PI%2F2%29%29%29%2C+t+%3D
+          // +0+..+2*PI
+          settings.shape = function shapeSquare(theta) {
+            var thetaPrime = theta % (2 * Math.PI / 4);
+            return 1 / (Math.cos(thetaPrime) + Math.sin(thetaPrime));
+          };
+          break;
+
+        case 'triangle-forward':
+          // http://www.wolframalpha.com/input/?i=plot+r+%3D+1%2F%28cos%28mod+
+          // %28t%2C+2*PI%2F3%29%29%2Bsqrt%283%29sin%28mod+%28t%2C+2*PI%2F3%29
+          // %29%29%2C+t+%3D+0+..+2*PI
+          settings.shape = function shapeTriangle(theta) {
+            var thetaPrime = theta % (2 * Math.PI / 3);
+            return 1 / (Math.cos(thetaPrime) +
+                        Math.sqrt(3) * Math.sin(thetaPrime));
+          };
+          break;
+
+        case 'triangle':
+        case 'triangle-upright':
+          settings.shape = function shapeTriangle(theta) {
+            var thetaPrime = (theta + Math.PI * 3 / 2) % (2 * Math.PI / 3);
+            return 1 / (Math.cos(thetaPrime) +
+                        Math.sqrt(3) * Math.sin(thetaPrime));
+          };
+          break;
+
+        case 'pentagon':
+          settings.shape = function shapePentagon(theta) {
+            var thetaPrime = (theta + 0.955) % (2 * Math.PI / 5);
+            return 1 / (Math.cos(thetaPrime) +
+                        0.726543 * Math.sin(thetaPrime));
+          };
+          break;
+
+        case 'star':
+          settings.shape = function shapeStar(theta) {
+            var thetaPrime = (theta + 0.955) % (2 * Math.PI / 10);
+            if ((theta + 0.955) % (2 * Math.PI / 5) - (2 * Math.PI / 10) >= 0) {
+              return 1 / (Math.cos((2 * Math.PI / 10) - thetaPrime) +
+                          3.07768 * Math.sin((2 * Math.PI / 10) - thetaPrime));
+            } else {
+              return 1 / (Math.cos(thetaPrime) +
+                          3.07768 * Math.sin(thetaPrime));
+            }
+          };
+          break;
+      }
+    }
+
+    /* Make sure gridSize is a whole number and is not smaller than 4px */
+    settings.gridSize = Math.max(Math.floor(settings.gridSize), 4);
+
+    /* shorthand */
+    var g = settings.gridSize;
+    var maskRectWidth = g - settings.maskGapWidth;
+
+    /* normalize rotation settings */
+    var rotationRange = Math.abs(settings.maxRotation - settings.minRotation);
+    var minRotation = Math.min(settings.maxRotation, settings.minRotation);
+
+    /* information/object available to all functions, set when start() */
+    var grid, // 2d array containing filling information
+      ngx, ngy, // width and height of the grid
+      center, // position of the center of the cloud
+      maxRadius;
+
+    /* timestamp for measuring each putWord() action */
+    var escapeTime;
+
+    /* function for getting the color of the text */
+    var getTextColor;
+    function random_hsl_color(min, max) {
+      return 'hsl(' +
+        (Math.random() * 360).toFixed() + ',' +
+        (Math.random() * 30 + 70).toFixed() + '%,' +
+        (Math.random() * (max - min) + min).toFixed() + '%)';
+    }
+    switch (settings.color) {
+      case 'random-dark':
+        getTextColor = function getRandomDarkColor() {
+          return random_hsl_color(10, 50);
+        };
+        break;
+
+      case 'random-light':
+        getTextColor = function getRandomLightColor() {
+          return random_hsl_color(50, 90);
+        };
+        break;
+
+      default:
+        if (typeof settings.color === 'function') {
+          getTextColor = settings.color;
+        }
+        break;
+    }
+
+    /* function for getting the classes of the text */
+    var getTextClasses = null;
+    if (typeof settings.classes === 'function') {
+      getTextClasses = settings.classes;
+    }
+
+    /* Interactive */
+    var interactive = false;
+    var infoGrid = [];
+    var hovered;
+
+    var getInfoGridFromMouseTouchEvent =
+    function getInfoGridFromMouseTouchEvent(evt) {
+      var canvas = evt.currentTarget;
+      var rect = canvas.getBoundingClientRect();
+      var clientX;
+      var clientY;
+      /** Detect if touches are available */
+      if (evt.touches) {
+        clientX = evt.touches[0].clientX;
+        clientY = evt.touches[0].clientY;
+      } else {
+        clientX = evt.clientX;
+        clientY = evt.clientY;
+      }
+      var eventX = clientX - rect.left;
+      var eventY = clientY - rect.top;
+
+      var x = Math.floor(eventX * ((canvas.width / rect.width) || 1) / g);
+      var y = Math.floor(eventY * ((canvas.height / rect.height) || 1) / g);
+
+      return infoGrid[x][y];
+    };
+
+    var wordcloudhover = function wordcloudhover(evt) {
+      var info = getInfoGridFromMouseTouchEvent(evt);
+
+      if (hovered === info) {
+        return;
+      }
+
+      hovered = info;
+      if (!info) {
+        settings.hover(undefined, undefined, evt);
+
+        return;
+      }
+
+      settings.hover(info.item, info.dimension, evt);
+
+    };
+
+    var wordcloudclick = function wordcloudclick(evt) {
+      var info = getInfoGridFromMouseTouchEvent(evt);
+      if (!info) {
+        return;
+      }
+
+      settings.click(info.item, info.dimension, evt);
+      evt.preventDefault();
+    };
+
+    /* Get points on the grid for a given radius away from the center */
+    var pointsAtRadius = [];
+    var getPointsAtRadius = function getPointsAtRadius(radius) {
+      if (pointsAtRadius[radius]) {
+        return pointsAtRadius[radius];
+      }
+
+      // Look for these number of points on each radius
+      var T = radius * 8;
+
+      // Getting all the points at this radius
+      var t = T;
+      var points = [];
+
+      if (radius === 0) {
+        points.push([center[0], center[1], 0]);
+      }
+
+      while (t--) {
+        // distort the radius to put the cloud in shape
+        var rx = 1;
+        if (settings.shape !== 'circle') {
+          rx = settings.shape(t / T * 2 * Math.PI); // 0 to 1
+        }
+
+        // Push [x, y, t]; t is used solely for getTextColor()
+        points.push([
+          center[0] + radius * rx * Math.cos(-t / T * 2 * Math.PI),
+          center[1] + radius * rx * Math.sin(-t / T * 2 * Math.PI) *
+            settings.ellipticity,
+          t / T * 2 * Math.PI]);
+      }
+
+      pointsAtRadius[radius] = points;
+      return points;
+    };
+
+    /* Return true if we had spent too much time */
+    var exceedTime = function exceedTime() {
+      return ((settings.abortThreshold > 0) &&
+        ((new Date()).getTime() - escapeTime > settings.abortThreshold));
+    };
+
+    /* Get the deg of rotation according to settings, and luck. */
+    var getRotateDeg = function getRotateDeg() {
+      if (settings.rotateRatio === 0) {
+        return 0;
+      }
+
+      if (Math.random() > settings.rotateRatio) {
+        return 0;
+      }
+
+      if (rotationRange === 0) {
+        return minRotation;
+      }
+
+      return minRotation + Math.random() * rotationRange;
+    };
+
+    var getTextInfo = function getTextInfo(word, weight, rotateDeg) {
+      // calculate the acutal font size
+      // fontSize === 0 means weightFactor function wants the text skipped,
+      // and size < minSize means we cannot draw the text.
+      var debug = false;
+      var fontSize = settings.weightFactor(weight);
+      if (fontSize <= settings.minSize) {
+        return false;
+      }
+
+      // Scale factor here is to make sure fillText is not limited by
+      // the minium font size set by browser.
+      // It will always be 1 or 2n.
+      var mu = 1;
+      if (fontSize < minFontSize) {
+        mu = (function calculateScaleFactor() {
+          var mu = 2;
+          while (mu * fontSize < minFontSize) {
+            mu += 2;
+          }
+          return mu;
+        })();
+      }
+
+      var fcanvas = document.createElement('canvas');
+      var fctx = fcanvas.getContext('2d', { willReadFrequently: true });
+
+      fctx.font = settings.fontWeight + ' ' +
+        (fontSize * mu).toString(10) + 'px ' + settings.fontFamily;
+
+      // Estimate the dimension of the text with measureText().
+      var fw = fctx.measureText(word).width / mu;
+      var fh = Math.max(fontSize * mu,
+                        fctx.measureText('m').width,
+                        fctx.measureText('\uFF37').width) / mu;
+
+      // Create a boundary box that is larger than our estimates,
+      // so text don't get cut of (it sill might)
+      var boxWidth = fw + fh * 2;
+      var boxHeight = fh * 3;
+      var fgw = Math.ceil(boxWidth / g);
+      var fgh = Math.ceil(boxHeight / g);
+      boxWidth = fgw * g;
+      boxHeight = fgh * g;
+
+      // Calculate the proper offsets to make the text centered at
+      // the preferred position.
+
+      // This is simply half of the width.
+      var fillTextOffsetX = - fw / 2;
+      // Instead of moving the box to the exact middle of the preferred
+      // position, for Y-offset we move 0.4 instead, so Latin alphabets look
+      // vertical centered.
+      var fillTextOffsetY = - fh * 0.4;
+
+      // Calculate the actual dimension of the canvas, considering the rotation.
+      var cgh = Math.ceil((boxWidth * Math.abs(Math.sin(rotateDeg)) +
+                           boxHeight * Math.abs(Math.cos(rotateDeg))) / g);
+      var cgw = Math.ceil((boxWidth * Math.abs(Math.cos(rotateDeg)) +
+                           boxHeight * Math.abs(Math.sin(rotateDeg))) / g);
+      var width = cgw * g;
+      var height = cgh * g;
+
+      fcanvas.setAttribute('width', width);
+      fcanvas.setAttribute('height', height);
+
+      if (debug) {
+        // Attach fcanvas to the DOM
+        document.body.appendChild(fcanvas);
+        // Save it's state so that we could restore and draw the grid correctly.
+        fctx.save();
+      }
+
+      // Scale the canvas with |mu|.
+      fctx.scale(1 / mu, 1 / mu);
+      fctx.translate(width * mu / 2, height * mu / 2);
+      fctx.rotate(- rotateDeg);
+
+      // Once the width/height is set, ctx info will be reset.
+      // Set it again here.
+      fctx.font = settings.fontWeight + ' ' +
+        (fontSize * mu).toString(10) + 'px ' + settings.fontFamily;
+
+      // Fill the text into the fcanvas.
+      // XXX: We cannot because textBaseline = 'top' here because
+      // Firefox and Chrome uses different default line-height for canvas.
+      // Please read https://bugzil.la/737852#c6.
+      // Here, we use textBaseline = 'middle' and draw the text at exactly
+      // 0.5 * fontSize lower.
+      fctx.fillStyle = '#000';
+      fctx.textBaseline = 'middle';
+      fctx.fillText(word, fillTextOffsetX * mu,
+                    (fillTextOffsetY + fontSize * 0.5) * mu);
+
+      // Get the pixels of the text
+      var imageData = fctx.getImageData(0, 0, width, height).data;
+
+      if (exceedTime()) {
+        return false;
+      }
+
+      if (debug) {
+        // Draw the box of the original estimation
+        fctx.strokeRect(fillTextOffsetX * mu,
+                        fillTextOffsetY, fw * mu, fh * mu);
+        fctx.restore();
+      }
+
+      // Read the pixels and save the information to the occupied array
+      var occupied = [];
+      var gx = cgw, gy, x, y;
+      var bounds = [cgh / 2, cgw / 2, cgh / 2, cgw / 2];
+      while (gx--) {
+        gy = cgh;
+        while (gy--) {
+          y = g;
+          singleGridLoop: {
+            while (y--) {
+              x = g;
+              while (x--) {
+                if (imageData[((gy * g + y) * width +
+                               (gx * g + x)) * 4 + 3]) {
+                  occupied.push([gx, gy]);
+
+                  if (gx < bounds[3]) {
+                    bounds[3] = gx;
+                  }
+                  if (gx > bounds[1]) {
+                    bounds[1] = gx;
+                  }
+                  if (gy < bounds[0]) {
+                    bounds[0] = gy;
+                  }
+                  if (gy > bounds[2]) {
+                    bounds[2] = gy;
+                  }
+
+                  if (debug) {
+                    fctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                    fctx.fillRect(gx * g, gy * g, g - 0.5, g - 0.5);
+                  }
+                  break singleGridLoop;
+                }
+              }
+            }
+            if (debug) {
+              fctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+              fctx.fillRect(gx * g, gy * g, g - 0.5, g - 0.5);
+            }
+          }
+        }
+      }
+
+      if (debug) {
+        fctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+        fctx.fillRect(bounds[3] * g,
+                      bounds[0] * g,
+                      (bounds[1] - bounds[3] + 1) * g,
+                      (bounds[2] - bounds[0] + 1) * g);
+      }
+
+      // Return information needed to create the text on the real canvas
+      return {
+        mu: mu,
+        occupied: occupied,
+        bounds: bounds,
+        gw: cgw,
+        gh: cgh,
+        fillTextOffsetX: fillTextOffsetX,
+        fillTextOffsetY: fillTextOffsetY,
+        fillTextWidth: fw,
+        fillTextHeight: fh,
+        fontSize: fontSize
+      };
+    };
+
+    /* Determine if there is room available in the given dimension */
+    var canFitText = function canFitText(gx, gy, gw, gh, occupied) {
+      // Go through the occupied points,
+      // return false if the space is not available.
+      var i = occupied.length;
+      while (i--) {
+        var px = gx + occupied[i][0];
+        var py = gy + occupied[i][1];
+
+        if (px >= ngx || py >= ngy || px < 0 || py < 0 || !grid[px][py]) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    /* Actually draw the text on the grid */
+    var drawText = function drawText(gx, gy, info, word, weight,
+                                     distance, theta, rotateDeg, attributes) {
+
+      var fontSize = info.fontSize;
+      var color;
+      if (getTextColor) {
+        color = getTextColor(word, weight, fontSize, distance, theta);
+      } else if (settings.color instanceof Array) {
+        color = settings.color.shift() || 'black'; // pass a array in setting, default 'black'
+      } else {
+        color = settings.color;
+      }
+
+      var classes;
+      if (getTextClasses) {
+        classes = getTextClasses(word, weight, fontSize, distance, theta);
+      } else {
+        classes = settings.classes;
+      }
+
+      var dimension;
+      var bounds = info.bounds;
+      dimension = {
+        x: (gx + bounds[3]) * g,
+        y: (gy + bounds[0]) * g,
+        w: (bounds[1] - bounds[3] + 1) * g,
+        h: (bounds[2] - bounds[0] + 1) * g
+      };
+
+      elements.forEach(function(el) {
+        if (el.getContext) {
+          var ctx = el.getContext('2d');
+          var mu = info.mu;
+
+          // Save the current state before messing it
+          ctx.save();
+          ctx.scale(1 / mu, 1 / mu);
+
+          ctx.font = settings.fontWeight + ' ' +
+                     (fontSize * mu).toString(10) + 'px ' + settings.fontFamily;
+          ctx.fillStyle = color;
+
+          // Translate the canvas position to the origin coordinate of where
+          // the text should be put.
+          ctx.translate((gx + info.gw / 2) * g * mu,
+                        (gy + info.gh / 2) * g * mu);
+
+          if (rotateDeg !== 0) {
+            ctx.rotate(- rotateDeg);
+          }
+
+          // Finally, fill the text.
+
+          // XXX: We cannot because textBaseline = 'top' here because
+          // Firefox and Chrome uses different default line-height for canvas.
+          // Please read https://bugzil.la/737852#c6.
+          // Here, we use textBaseline = 'middle' and draw the text at exactly
+          // 0.5 * fontSize lower.
+          ctx.textBaseline = 'middle';
+          ctx.fillText(word, info.fillTextOffsetX * mu,
+                             (info.fillTextOffsetY + fontSize * 0.5) * mu);
+
+          // The below box is always matches how <span>s are positioned
+          /* ctx.strokeRect(info.fillTextOffsetX, info.fillTextOffsetY,
+            info.fillTextWidth, info.fillTextHeight); */
+
+          // Restore the state.
+          ctx.restore();
+        } else {
+          // drawText on DIV element
+          var span = document.createElement('span');
+          var transformRule = '';
+          transformRule = 'rotate(' + (- rotateDeg / Math.PI * 180) + 'deg) ';
+          if (info.mu !== 1) {
+            transformRule +=
+              'translateX(-' + (info.fillTextWidth / 4) + 'px) ' +
+              'scale(' + (1 / info.mu) + ')';
+          }
+          var styleRules = {
+            'position': 'absolute',
+            'display': 'block',
+            'font': settings.fontWeight + ' ' +
+                    (fontSize * info.mu) + 'px ' + settings.fontFamily,
+            'left': ((gx + info.gw / 2) * g + info.fillTextOffsetX) + 'px',
+            'top': ((gy + info.gh / 2) * g + info.fillTextOffsetY) + 'px',
+            'width': info.fillTextWidth + 'px',
+            'height': info.fillTextHeight + 'px',
+            'lineHeight': fontSize + 'px',
+            'whiteSpace': 'nowrap',
+            'transform': transformRule,
+            'webkitTransform': transformRule,
+            'msTransform': transformRule,
+            'transformOrigin': '50% 40%',
+            'webkitTransformOrigin': '50% 40%',
+            'msTransformOrigin': '50% 40%'
+          };
+          if (color) {
+            styleRules.color = color;
+          }
+          span.textContent = word;
+          for (var cssProp in styleRules) {
+            span.style[cssProp] = styleRules[cssProp];
+          }
+          if (attributes) {
+            for (var attribute in attributes) {
+              span.setAttribute(attribute, attributes[attribute]);
+            }
+          }
+          if (classes) {
+            span.className += classes;
+          }
+          el.appendChild(span);
+        }
+      });
+    };
+
+    /* Help function to updateGrid */
+    var fillGridAt = function fillGridAt(x, y, drawMask, dimension, item) {
+      if (x >= ngx || y >= ngy || x < 0 || y < 0) {
+        return;
+      }
+
+      grid[x][y] = false;
+
+      if (drawMask) {
+        var ctx = elements[0].getContext('2d');
+        ctx.fillRect(x * g, y * g, maskRectWidth, maskRectWidth);
+      }
+
+      if (interactive) {
+        infoGrid[x][y] = { item: item, dimension: dimension };
+      }
+    };
+
+    /* Update the filling information of the given space with occupied points.
+       Draw the mask on the canvas if necessary. */
+    var updateGrid = function updateGrid(gx, gy, gw, gh, info, item) {
+      var occupied = info.occupied;
+      var drawMask = settings.drawMask;
+      var ctx;
+      if (drawMask) {
+        ctx = elements[0].getContext('2d');
+        ctx.save();
+        ctx.fillStyle = settings.maskColor;
+      }
+
+      var dimension;
+      if (interactive) {
+        var bounds = info.bounds;
+        dimension = {
+          x: (gx + bounds[3]) * g,
+          y: (gy + bounds[0]) * g,
+          w: (bounds[1] - bounds[3] + 1) * g,
+          h: (bounds[2] - bounds[0] + 1) * g
+        };
+      }
+
+      var i = occupied.length;
+      while (i--) {
+        fillGridAt(gx + occupied[i][0], gy + occupied[i][1],
+                   drawMask, dimension, item);
+      }
+
+      if (drawMask) {
+        ctx.restore();
+      }
+    };
+
+    /* putWord() processes each item on the list,
+       calculate it's size and determine it's position, and actually
+       put it on the canvas. */
+    var putWord = function putWord(item) {
+      var word, weight, attributes;
+      if (Array.isArray(item)) {
+        word = item[0];
+        weight = item[1];
+      } else {
+        word = item.word;
+        weight = item.weight;
+        attributes = item.attributes;
+      }
+      var rotateDeg = getRotateDeg();
+
+      // get info needed to put the text onto the canvas
+      var info = getTextInfo(word, weight, rotateDeg);
+
+      // not getting the info means we shouldn't be drawing this one.
+      if (!info) {
+        return false;
+      }
+
+      if (exceedTime()) {
+        return false;
+      }
+
+      // Skip the loop if we have already know the bounding box of
+      // word is larger than the canvas.
+      var bounds = info.bounds;
+      if ((bounds[1] - bounds[3] + 1) > ngx ||
+        (bounds[2] - bounds[0] + 1) > ngy) {
+        return false;
+      }
+
+      // Determine the position to put the text by
+      // start looking for the nearest points
+      var r = maxRadius + 1;
+
+      var tryToPutWordAtPoint = function(gxy) {
+        var gx = Math.floor(gxy[0] - info.gw / 2);
+        var gy = Math.floor(gxy[1] - info.gh / 2);
+        var gw = info.gw;
+        var gh = info.gh;
+
+        // If we cannot fit the text at this position, return false
+        // and go to the next position.
+        if (!canFitText(gx, gy, gw, gh, info.occupied)) {
+          return false;
+        }
+
+        // Actually put the text on the canvas
+        drawText(gx, gy, info, word, weight,
+                 (maxRadius - r), gxy[2], rotateDeg, attributes);
+
+        // Mark the spaces on the grid as filled
+        updateGrid(gx, gy, gw, gh, info, item);
+
+        // Return true so some() will stop and also return true.
+        return true;
+      };
+
+      while (r--) {
+        var points = getPointsAtRadius(maxRadius - r);
+
+        if (settings.shuffle) {
+          points = [].concat(points);
+          shuffleArray(points);
+        }
+
+        // Try to fit the words by looking at each point.
+        // array.some() will stop and return true
+        // when putWordAtPoint() returns true.
+        // If all the points returns false, array.some() returns false.
+        var drawn = points.some(tryToPutWordAtPoint);
+
+        if (drawn) {
+          // leave putWord() and return true
+          return true;
+        }
+      }
+      // we tried all distances but text won't fit, return false
+      return false;
+    };
+
+    /* Send DOM event to all elements. Will stop sending event and return
+       if the previous one is canceled (for cancelable events). */
+    var sendEvent = function sendEvent(type, cancelable, detail) {
+      if (cancelable) {
+        return !elements.some(function(el) {
+          var evt = document.createEvent('CustomEvent');
+          evt.initCustomEvent(type, true, cancelable, detail || {});
+          return !el.dispatchEvent(evt);
+        }, this);
+      } else {
+        elements.forEach(function(el) {
+          var evt = document.createEvent('CustomEvent');
+          evt.initCustomEvent(type, true, cancelable, detail || {});
+          el.dispatchEvent(evt);
+        }, this);
+      }
+    };
+
+    /* Start drawing on a canvas */
+    var start = function start() {
+      // For dimensions, clearCanvas etc.,
+      // we only care about the first element.
+      var canvas = elements[0];
+
+      if (canvas.getContext) {
+        ngx = Math.floor(canvas.width / g);
+        ngy = Math.floor(canvas.height / g);
+      } else {
+        var rect = canvas.getBoundingClientRect();
+        ngx = Math.floor(rect.width / g);
+        ngy = Math.floor(rect.height / g);
+      }
+
+      // Sending a wordcloudstart event which cause the previous loop to stop.
+      // Do nothing if the event is canceled.
+      if (!sendEvent('wordcloudstart', true)) {
+        return;
+      }
+
+      // Determine the center of the word cloud
+      center = (settings.origin) ?
+        [settings.origin[0]/g, settings.origin[1]/g] :
+        [ngx / 2, ngy / 2];
+
+      // Maxium radius to look for space
+      maxRadius = Math.floor(Math.sqrt(ngx * ngx + ngy * ngy));
+
+      /* Clear the canvas only if the clearCanvas is set,
+         if not, update the grid to the current canvas state */
+      grid = [];
+
+      var gx, gy, i;
+      if (!canvas.getContext || settings.clearCanvas) {
+        elements.forEach(function(el) {
+          if (el.getContext) {
+            var ctx = el.getContext('2d');
+            ctx.fillStyle = settings.backgroundColor;
+            ctx.clearRect(0, 0, ngx * (g + 1), ngy * (g + 1));
+            ctx.fillRect(0, 0, ngx * (g + 1), ngy * (g + 1));
+          } else {
+            el.textContent = '';
+            el.style.backgroundColor = settings.backgroundColor;
+          }
+        });
+
+        /* fill the grid with empty state */
+        gx = ngx;
+        while (gx--) {
+          grid[gx] = [];
+          gy = ngy;
+          while (gy--) {
+            grid[gx][gy] = true;
+          }
+        }
+      } else {
+        /* Determine bgPixel by creating
+           another canvas and fill the specified background color. */
+        var bctx = document.createElement('canvas').getContext('2d');
+
+        bctx.fillStyle = settings.backgroundColor;
+        bctx.fillRect(0, 0, 1, 1);
+        var bgPixel = bctx.getImageData(0, 0, 1, 1).data;
+
+        /* Read back the pixels of the canvas we got to tell which part of the
+           canvas is empty.
+           (no clearCanvas only works with a canvas, not divs) */
+        var imageData =
+          canvas.getContext('2d').getImageData(0, 0, ngx * g, ngy * g).data;
+
+        gx = ngx;
+        var x, y;
+        while (gx--) {
+          grid[gx] = [];
+          gy = ngy;
+          while (gy--) {
+            y = g;
+            singleGridLoop: while (y--) {
+              x = g;
+              while (x--) {
+                i = 4;
+                while (i--) {
+                  if (imageData[((gy * g + y) * ngx * g +
+                                 (gx * g + x)) * 4 + i] !== bgPixel[i]) {
+                    grid[gx][gy] = false;
+                    break singleGridLoop;
+                  }
+                }
+              }
+            }
+            if (grid[gx][gy] !== false) {
+              grid[gx][gy] = true;
+            }
+          }
+        }
+
+        imageData = bctx = bgPixel = undefined;
+      }
+
+      // fill the infoGrid with empty state if we need it
+      if (settings.hover || settings.click) {
+
+        interactive = true;
+
+        /* fill the grid with empty state */
+        gx = ngx + 1;
+        while (gx--) {
+          infoGrid[gx] = [];
+        }
+
+        if (settings.hover) {
+          canvas.addEventListener('mousemove', wordcloudhover);
+        }
+
+        if (settings.click) {
+          canvas.addEventListener('click', wordcloudclick);
+          canvas.addEventListener('touchstart', wordcloudclick);
+          canvas.addEventListener('touchend', function (e) {
+            e.preventDefault();
+          });
+          canvas.style.webkitTapHighlightColor = 'rgba(0, 0, 0, 0)';
+        }
+
+        canvas.addEventListener('wordcloudstart', function stopInteraction() {
+          canvas.removeEventListener('wordcloudstart', stopInteraction);
+
+          canvas.removeEventListener('mousemove', wordcloudhover);
+          canvas.removeEventListener('click', wordcloudclick);
+          hovered = undefined;
+        });
+      }
+
+      i = 0;
+      var loopingFunction, stoppingFunction;
+      if (settings.wait !== 0) {
+        loopingFunction = window.setTimeout;
+        stoppingFunction = window.clearTimeout;
+      } else {
+        loopingFunction = window.setImmediate;
+        stoppingFunction = window.clearImmediate;
+      }
+
+      var addEventListener = function addEventListener(type, listener) {
+        elements.forEach(function(el) {
+          el.addEventListener(type, listener);
+        }, this);
+      };
+
+      var removeEventListener = function removeEventListener(type, listener) {
+        elements.forEach(function(el) {
+          el.removeEventListener(type, listener);
+        }, this);
+      };
+
+      var anotherWordCloudStart = function anotherWordCloudStart() {
+        removeEventListener('wordcloudstart', anotherWordCloudStart);
+        stoppingFunction(timer);
+      };
+
+      addEventListener('wordcloudstart', anotherWordCloudStart);
+
+      var timer = loopingFunction(function loop() {
+        if (i >= settings.list.length) {
+          stoppingFunction(timer);
+          sendEvent('wordcloudstop', false);
+          removeEventListener('wordcloudstart', anotherWordCloudStart);
+
+          return;
+        }
+        escapeTime = (new Date()).getTime();
+        var drawn = putWord(settings.list[i]);
+        var canceled = !sendEvent('wordclouddrawn', true, {
+          item: settings.list[i], drawn: drawn });
+        if (exceedTime() || canceled) {
+          stoppingFunction(timer);
+          settings.abort();
+          sendEvent('wordcloudabort', false);
+          sendEvent('wordcloudstop', false);
+          removeEventListener('wordcloudstart', anotherWordCloudStart);
+          return;
+        }
+        i++;
+        timer = loopingFunction(loop, settings.wait);
+      }, settings.wait);
+    };
+
+    // All set, start the drawing
+    start();
+  };
+
+  WordCloud.isSupported = isSupported;
+  WordCloud.minFontSize = minFontSize;
+
+  // Expose the library as an AMD module
+  if (typeof define === 'function' && define.amd) {
+    define('wordcloud', [], function() { return WordCloud; });
+  } else if (typeof module !== 'undefined' && module.exports) {
+    module.exports = WordCloud;
+  } else {
+    global.WordCloud = WordCloud;
+  }
+
+})(this); //jshint ignore:line
+</script>
+<script>// create element
+function newlabel(el){
+  var newDiv = document.createElement("div");
+  var newSpan = document.createElement("span");
+  newDiv.id = 'wcLabel';
+  newSpan.id = "wcSpan";
+  el.appendChild(newDiv);
+  document.getElementById("wcLabel").appendChild(newSpan);
+}
+
+// hover function
+function cv_handleHover(item, dimension, evt) {
+  var el = document.getElementById("wcLabel");
+  if (!item) {
+    el.setAttribute('hidden', true);
+
+    return;
+  }
+
+  el.removeAttribute('hidden');
+  // console.log(evt.srcElement.offsetLeft);
+
+  el.style.left = dimension.x + evt.srcElement.offsetLeft + 'px';
+  el.style.top = dimension.y + evt.srcElement.offsetTop + 'px';
+  el.style.width = dimension.w + 'px';
+  el.style.height = dimension.h + 'px';
+
+  this.hoverDimension = dimension;
+
+  document.getElementById("wcSpan").setAttribute(
+    'data-l10n-args', JSON.stringify({ word: item[0], count: item[1] }));
+  document.getElementById("wcSpan").innerHTML =item[0]+":" + item[1];
+
+}
+
+function updateCanvasMask(maskCanvas) {
+    var ctx = maskCanvas.getContext('2d');
+    var imageData = ctx.getImageData(
+        0, 0, maskCanvas.width, maskCanvas.height);
+    var newImageData = ctx.createImageData(imageData);
+
+    var toneSum = 0;
+    var toneCnt = 0;
+    for (var i = 0; i < imageData.data.length; i += 4) {
+        var alpha = imageData.data[i + 3];
+        if (alpha > 128) {
+            var tone = imageData.data[i]
+                + imageData.data[i + 1]
+                + imageData.data[i + 2];
+            toneSum += tone;
+            ++toneCnt;
+        }
+    }
+    var threshold = toneSum / toneCnt;
+
+    for (var i = 0; i < imageData.data.length; i += 4) {
+        var tone = imageData.data[i]
+            + imageData.data[i + 1]
+            + imageData.data[i + 2];
+        var alpha = imageData.data[i + 3];
+
+        if (alpha < 128 || tone > threshold) {
+            // Area not to draw
+            newImageData.data[i] = 0;
+            newImageData.data[i + 1] = 0;
+            newImageData.data[i + 2] = 0;
+            newImageData.data[i + 3] = 0;
+        }
+        else {
+            // Area to draw
+            // The color must be same with backgroundColor
+            newImageData.data[i] = 255;
+            newImageData.data[i + 1] = 255;
+            newImageData.data[i + 2] = 255;
+            newImageData.data[i + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(newImageData, 0, 0);
+    console.log(maskCanvas.toDataURL());
+}
+
+
+
+//mask function
+function maskInit(el,x){
+  console.log(1)
+  str = x.figBase64;
+  //console.log(str)
+  var newImg = new Image();
+  newImg.src = str;
+  newImg.style.position = 'absolute';
+  newImg.style.left = 0;
+  // console.log(el.clientHeight);
+  newImg.width = el.clientWidth;
+  newImg.height = el.clientHeight;
+  // maskCanvas = init(el, x, newImg);
+  vvalue = 128
+
+  ctx = el.firstChild.getContext('2d');
+
+                ctx.drawImage(newImg, 0, 0, canvas.width, canvas.height);
+                updateCanvasMask(ctx);
+
+
+
+
+
+            WordCloud(el.firstChild, { list: listData,
+                  fontFamily: x.fontFamily,
+                  fontWeight: x.fontWeight,
+                  color: x.color,
+                  minSize: x.minSize,
+                  weightFactor: x.weightFactor,
+                  backgroundColor: x.backgroundColor,
+                  gridSize: x.gridSize,
+                  minRotation: x.minRotation,
+                  maxRotation: x.maxRotation,
+                  shuffle: x.shuffle,
+                  shape: x.shape,
+                  rotateRatio: x.rotateRatio,
+                  ellipticity: x.ellipticity,
+                  clearCanvas: false,
+                  drawMask: true,
+                  hover: x.hover || cv_handleHover,
+                  abortThreshold: 3000
+                  });
+}
+
+</script>
+<script>HTMLWidgets.widget({
+
+  name: 'wordcloud2',
+
+  type: 'output',
+
+  initialize: function(el, width, height) {
+    var newCanvas = document.createElement("canvas");
+    newCanvas.height = height;
+    newCanvas.width = width;
+    newCanvas.id = "canvas";
+
+    el.appendChild(newCanvas);
+    newlabel(el);
+    return(el.firstChild);
+  },
+  renderValue: function(el, x, instance) {
+  // parse gexf data
+        listData=[];
+        for(var i=0; i<x.word.length; i++){
+          listData.push([x.word[i], x.freq[i]]);
+        }
+     if(x.figBase64){
+
+        maskInit(el,x);
+        console.log(3)
+
+      }else{
+        WordCloud(el.firstChild, { list: listData,
+                        fontFamily: x.fontFamily,
+                        fontWeight: x.fontWeight,
+                        color: x.color,
+                        minSize: x.minSize,
+                        weightFactor: x.weightFactor,
+                        backgroundColor: x.backgroundColor,
+                        gridSize: x.gridSize,
+                        minRotation: x.minRotation,
+                        maxRotation: x.maxRotation,
+                        shuffle: x.shuffle,
+                        shape: x.shape,
+                        rotateRatio: x.rotateRatio,
+                        ellipticity: x.ellipticity,
+                        drawMask: x.drawMask,
+                        maskColor: x.maskColor,
+                        maskGapWidth: x.maskGapWidth,
+                        hover: x.hover || cv_handleHover
+                        });
+      }
+    },
+      resize: function(el, width, height) {
+      }
+
+});
+</script>
+
+</head>
+<body>
+<div id="htmlwidget_container">
+  <div id="htmlwidget-f6a9ac858957b18d8c79" style="width:960px;height:500px;" class="wordcloud2 html-widget"></div>
+</div>
+<script type="application/json" data-for="htmlwidget-f6a9ac858957b18d8c79">{"x":{"word":["coronavirus","covid","people","health","cases","virus","state","pandemic","time","government","public","april","social","deaths","states","patients","march","workers","number","testing","medical","trump","county","hospital","president","country","million","spread","positive","including","reported","news","masks","officials","lockdown","days","outbreak","city","disease","weeks","distancing","tested","crisis","confirmed","staff","china","national","york","measures","department","food","death","support","businesses","local","working","monday","residents","hospitals","business","announced","data","years","tests","countries","house","friday","community","due","emergency","restrictions","services","information","symptoms","already","daily","died","times","open","case","federal","response","global","stay","minister","family","economy","economic","company","risk","market","united","without","media","equipment","thursday","closed","tuesday","others","however","chief","members","report","seen","oil","employees","center","used","months","reopen","university","police","group","contact","wednesday","infected","homes","likely","available","sunday","service","infections","companies","photo","facilities","percent","protective","online","school","control","increase","plan","ventilators","governments","billion","director","free","press","provide","demand","supply","lot","taking","outside","children","things","rate","doctors","travel","infection","numbers","gov","lives","remain","safety","mask","person","nearly","office","production","hours","prices","making","latest","statement","safe","later","experts","coming","recent","financial","healthcare","important","impact","reopening","international","capacity","theres","saturday","supplies","essential","getting","share","reports","executive","orders","taken","following","different","allowed","within","administration","away","washington","email","prime","needed","quarantine","given","industry","earlier","situation","personal","governor","saying","team","customers","americans","american","return","official","using","hit","protect","expected","areas","money","current","guidelines","schools","reuters","officer","nursing","chinese","research","price","efforts","results","area","everyone","amid","plans","despite","london","restaurants","population","morning","access","additional","families","authorities","currently","fight","toll","become","higher","video","major","started","patient","quarter","weve","comes","rules","needs","almost","treatment","vaccine","follow","critical","leaders","trying","something","related","sick","clear","stores","based","pay","donald","decision","secretary","limited","quickly","ensure","security","via","conditions","released","groups","stayathome","didnt","wear","future","facility","nations","yearold","johnson","communities","agency","wearing","normal","looking","centers","human","youre","night","facebook","sales","drug","markets","means","political","former","policy","nation","thousands","governors","job","release","result","air","wrote","potential","june","ministry","products","recently","process","warned","california","key","twitter","nurses","novel","increased","issued","difficult","ppe","prevent","concerns","program","capital","resources","received","doesnt","countrys","vulnerable","students","conference","law","continues","operations","hope","question","questions","caused","illness","senior","private","italy","study","region","instead","cdc","texas","action","address","bank","lost","although","central","provided","america","briefing","jobs","living","war","florida","guidance","thank","trumps","organization","power","rates","evidence","africa","district","severe","individuals","park","advertisement","store","fact","unemployment","date","issue","negative","foreign","wuhan","meeting","lack","shows","ill","professor","beds","bill","issues","recovery","phone","isolation","significant","head","union","cost","europe","mayor","avoid","effort","lower","hands","room","intensive","ahead","gatherings","energy","anyone","respiratory","delivery","required","calls","water","relief","counties","longer","meet","remains","claims","woman","continued","february","management","strong","places","court","everything","weekend","fear","figures","cash","levels","growth","development","source","reporting","buy","aid","shut","actually","sector","russia","seeing","stock","associated","website","starting","cities","citizens","wont","protection","recorded","course","largest","india","ways","site","beach","member","advice","visit","rise","worked","meanwhile","longterm","friends","particularly","phase","includes","prevention","age","systems","technology","january","trade","john","items","problems","spreading","millions","update","inside","san","recovered","average","association","showed","image","pressure","running","beginning","institute","letter","transmission","affected","shortage","message","british","michigan","throughout","party","peak","images","parts","doctor","providing","african","compared","fund","reduce","australia","ones","campaign","centre","biggest","adding","events","forced","ventilator","council","leader","nurse","rest","previous","moment","changes","infectious","funding","rights","created","effective","east","experience","event","published","body","effect","highest","blood","shortages","shared","previously","resident","revenue","understand","korea","offer","older","jersey","task","reached","anything","focus","play","list","terms","makes","threat","history","military","women","hundreds","approach","steps","hospitalized","diseases","space","isnt","panic","extended","medicine","leading","building","activities","benefits","plant","ordered","mass","physical","chain","coverage","officers","retail","nonessential","province","serious","democratic","limit","epidemic","app","credit","fever","facing","keeping","parents","european","role","ability","majority","flu","outbreaks","probably","stories","showing","paper","noted","urged","costs","nationwide","vice","getty","moving","matter","education","developed","immediately","surge","ive","gloves","heart","operating","concern","committee","reason","growing","young","asking","island","scientists","border","domestic","treat","passed","helping","tracing","signs","calling","gas","worker","interview","election","england","ship","sites","strategy","die","angeles","distance","save","loss","parks","worlds","researchers","works","meat","canada","kits","spending","bad","alone","couple","addition","yesterday","republican","manufacturing","bars","funds","passengers","project","analyst","overall","spokesman","statewide","revealed","challenges","income","worst","prison","worse","opening","summer","true","shops","greater","boris","mike","ceo","banks","amount","whats","society","huge","michael","opportunity","tax","church","lines","updates","included","individual","details","grocery","account","conspiracy","beyond","entire","spain","concerned","decisions","healthy","became","putting","maintain","posted","warning","fire","frontline","inmates","activity","plants","chinas","regional","virtual","andrew","science","college","points","challenge","fauci","clinical","allowing","exposure","wave","create","interest","respond","file","fewer","love","season","assistance","guard","france","delivered","planning","restaurant","killed","authority","david","followed","network","basis","child","kids","offering","trust","paid","decline","giving","resume","potentially","unprecedented","movement","temporary","wanted","risks","ministers","germany","identified","talk","immune","moved","citys","deadly","article","various","actions","considered","strict","suggested","road","senate","wasnt","primary","comments","existing","lockdowns","spent","staying","drugs","exposed","position","northern","worldwide","shopping","adults","car","arent","package","democrats","lab","debt","mexico","flights","thanks","value","professionals","afternoon","ease","analysis","prepared","personnel","decided","takes","track","visitors","multiple","sources","content","increasing","congress","regions","causes","claimed","raised","watch","ongoing","series","easter","investors","active","elderly","agencies","shares","empty","product","commission","reporters","turned","digital","fears","model","approved","easing","maybe","providers","reduced","specific","struggling","effects","investment","widespread","speaking","updated","notice","privacy","worried","legal","minutes","develop","pictured","farmers","review","independent","wants","cough","apart","leaving","construction","cleaning","declared","britain","buying","changed","mild","seems","stimulus","figure","mobile","training","scientific","fighting","gear","chairman","loved","admitted","ban","studies","helped","appeared","budget","insurance","attention","imposed","employee","environment","learning","stocks","initial","click","measure","men","range","returned","request","fully","organizations","quite","described","antibody","icu","massive","directly","exercise","july","treated","battle","prior","goods","saudi","involved","goes","poor","shutdown","simply","suspected","policies","transport","talking","filed","commercial","highly","mental","placed","foundation","western","claim","safely","evening","dangerous","husband","rural","investigation","comment","crude","linked","feeling","returning","distribution","offered","payments","announcement","drive","met","seeking","false","units","programs","launched","teams","curve","extra","instagram","largely","peoples","scheduled","streets","trial","iran","waiting","infrastructure","conducted","iowa","worth","leadership","continuing","russian","ohio","initially","supporting","planned","owners","usually","explained","processing","regular","benefit","options","contract","underlying","immediate","serve","estimated","appears","lawmakers","suspended","amazon","son","locations","cuts","nigeria","temporarily","colleagues","closing","dead","labor","loans","lifted","certainly","georgia","suffering","survey","reality","stage","station","happened","wisconsin","designed","unable","borders","civil","expert","green","partners","firm","shift","sometimes","shop","enforcement","fake","immunity","damage","hot","vital","breathing","housing","target","deliver","mostly","sports","roughly","protest","thinking","biden","misinformation","rising","gets","religious","indian","economies","theyve","bay","break","illinois","justice","producers","beaches","net","clean","tweeted","consumers","antibodies","airport","hopes","combat","scale","arrived","losses","agreed","happening","projects","signed","intelligence","usa","remained","army","developing","bed","closure","diagnosed","finally","beijing","massachusetts","republicans","tried","reasons","focused","rooms","stopped","receiving","disaster","fatalities","hydroxychloroquine","oxygen","normally","companys","contributed","forces","index","pneumonia","goal","checks","newsletter","industries","selling","deputy","dropped","cruise","heres","opened","completely","wrong","annual","temperature","reopened","chris","balance","shown","newsom","contracted","subscribe","identify","responsible","crew","spokesperson","rapid","southern","viral","defense","household","manager","havent","uncertainty","offices","virginia","departments","fox","daughter","becoming","chicago","flight","commissioner","laboratory","priority","believed","rapidly","doors","everybody","shes","journal","ground","robert","victims","closures","gold","spike","toilet","navy","provides","airlines","declined","statistics","downing","seriously","meals","dying","precautions","race","words","canadian","recover","remote","significantly","factors","theories","protesters","animals","pretty","protests","traffic","detroit","responders","cars","quality","popular","users","cancer","platform","procedures","lets","progress","australian","looks","mind","urgent","regarding","manage","holding","sell","centres","countys","faced","persons","trading","recession","unless","wall","royal","cnn","joe","registered","vote","quarantined","fresh","hopkins","cabinet","drivers","upon","clients","hotel","samples","screening","affairs","afp","hygiene","presidential","machines","owner","paul","easy","handling","sharing","relatively","criticism","jail","practices","circumstances","typically","failed","japan","earnings","stress","father","mail","absolutely","host","expressed","asia","wouldnt","volunteers","weather","recommendations","december","treating","violence","asymptomatic","johns","protocols","sort","dealing","institutions","therefore","hasnt","trials","couldnt","outdoor","plus","murphy","politics","raise","allows","sending","contracting","game","moscow","requirements","curb","james","smaller","aware","judge","telling","towards","trillion","status","matt","considering","door","extremely","hospitalizations","arizona","sanitizer","surgical","weekly","globe","tom","property","attorney","gowns","remember","accused","messages","voters","george","location","purchase","separate","caption","closely","type","apply","star","encouraged","performance","attacks","dozens","lift","seek","possibility","appropriate","consumer","hong","wash","approximately","internet","viruses","french","canceled","ended","spring","workforce","firms","handle","overwhelmed","funeral","anthony","thomas","elsewhere","emerged","vehicles","expand","finding","requires","fda","sectors","carolina","impacted","dollars","carried","decades","happy","recommended","suggest","vaccines","wales","extend","suggests","banned","obviously","labs","tourism","responsibility","inperson","sold","tough","payment","pushed","faces","tracking","accounts","friend","widely","inc","partner","experiencing","radio","worry","loan","breaking","homeless","finance","lungs","size","touch","transportation","exactly","customer","implemented","reportedly","standard","pennsylvania","crucial","flow","responded","donations","presidents","shoppers","believes","larger","louisiana","subscribing","tally","advised","attack","nature","charge","ford","success","begun","clearly","link","lowest","hair","hotels","bodies","contacts","photos","employers","urging","coverings","freedom","monitoring","prisons","covering","scott","estimates","labour","lifting","arabia","built","fuel","driving","hancock","materials","maryland","jan","miles","pence","fourth","operation","forecast","meaning","regulations","informed","shelter","mission","fellow","version","option","joined","opportunities","agreement","grow","operator","unknown","retailers","spokeswoman","statements","gathering","eased","failure","learned","youve","eventually","adviser","falling","pushing","survive","improve","introduced","kim","games","isolated","music","newsletters","proper","speed","dollar","impossible","joint","obama","climate","rule","coast","happens","traditional","clinic","experienced","protected","houses","looked","smith","attempt","anxiety","discuss","limits","otherwise","premier","publicly","scenario","requiring","capitol","churches","corporate","pain","increasingly","hall","models","none","carrying","increases","analysts","visits","chains","offers","setting","tweet","material","preparing","paying","playing","possibly","sun","fiscal","meetings","singapore","exchange","spaces","stands","alerts","baby","conduct","maine","produced","holiday","trend","approval","consequences","hearing","distributed","manufacturers","connecticut","effectively","written","november","theory","helps","vast","aimed","gives","delay","lake","reporter","voting","foods","journalism","treatments","generally","asian","humanitarian","creating","donated","conservative","solution","americas","brazil","facts","knows","lose","encouraging","administrations","adequate","session","king","difference","initiative","parties","confidence","industrial","arrested","francisco","records","solutions","takeout","citing","danger","fans","boost","challenging","physician","valley","barrel","abroad","hill","committed","entering","requests","jones","washing","headlines","professional","factory","farm","posts","kansas","zero","standards","caught","choice","organisation","legislation","populations","google","midmarch","causing","design","kong","port","raising","devices","globally","households","map","teachers","moderate","stations","turning","inbox","student","supermarket","videos","ontario","classes","expects","percentage","protecting","memorial","twice","houston","talks","donate","emerging","acute","complications","journalists","rent","managing","assistant","breath","players","reading","understanding","gallery","alcohol","subject","suffered","affect","postponed","communication","minimum","territory","encourage","occurred","mandatory","salons","sen","laid","limiting","monitor","walking","writing","surveillance","assist","dozen","secure","warnings","completed","physicians","rally","sale","accurate","delayed","truth","criminal","stockpile","played","internal","powers","colorado","opposition","served","collapse","express","duty","repeatedly","respect","poll","discharged","serving","importance","raw","laws","september","specifically","train","platforms","easily","halt","predicted","tech","expanded","watching","win","changing","restart","unclear","onto","removed","parking","spot","supermarkets","opinion","sought","television","complex","humans","spanish","launch","nose","volume","download","assets","eastern","gather","losing","mentioned","tens","cited","original","league","reduction","whatever","art","represents","whos","relations","agriculture","enforce","garden","combined","faster","rep","slowly","aged","alert","taiwan","denied","indonesia","dedicated","elections","peter","politicians","provinces","whitmer","acting","aggressive","rely","window","desantis","remarks","trip","output","soap","ireland","oregon","instance","ensuring","established","originally","strategic","advantage","cold","programme","regularly","pointed","eyes","animal","supreme","abuse","channel","extent","hoping","acknowledged","stressed","ultimately","britains","impacts","steve","curfew","matters","soldiers","unlikely","driven","entertainment","god","mortality","pakistan","syndrome","floor","gradually","invalid","refused","partnership","contracts","grant","supposed","alternative","apple","relationship","immigration","cross","storage","todays","named","village","pickup","attend","kill","veterans","readers","remaining","detailed","managed","israel","zoom","plastic","adult","zealand","coronavirusrelated","actual","entry","ships","clinics","gyms","lee","newspaper","reducing","river","listed","straight","courts","crowded","speech","corona","starts","answers","applications","camp","conversation","estate","isolate","schedule","routine","employment","unfortunately","broadcast","democrat","sars","decrease","republic","eat","factories","located","notes","successful","bureau","devastating","suppliers","abbott","club","eligible","implement","instructions","struggle","feb","runs","section","tools","reserve","export","ward","airline","slowing","cure","discussed","maintaining","overseas","selfisolation","barrels","responding","baker","german","appeal","falls","brian","confirm","criteria","comfort","definitely","suggesting","vehicle","bus","chronic","birthday","decade","frequently","turkey","buildings","cope","lots","networks","reflect","urban","august","donation","appointment","availability","cells","communications","noting","slightly","walks","nonprofit","poverty","sitting","specialist","surfaces","containment","assembly","becomes","blame","epicenter","incident","listen","shelves","bills","trends","alex","ambulance","prisoners","supported","chair","movie","alongside","hardest","types","youtube","intended","shields","october","scheme","brother","determined","russias","welcome","adds","provincial","standing","liquidity","spots","willing","seemed","speaks","cloth","younger","announce","confident","cooperation","opec","wake","unique","variety","bigger","enjoy","equity","bar","camps","districts","feels","lung","nobody","parliament","proposed","remotely","settings","environmental","groceries","delivering","italian","accept","contagious","migrant","overnight","sea","covered","extension","fallen","harder","newly","minnesota","selfquarantine","stephen","tennessee","cancelled","estimate","feed","sir","sister","sharp","supporters","catch","kingdom","princess","gates","locked","spreads","indeed","register","surrounding","permitted","advisory","charged","kelly","views","depression","directed","disinformation","giant","lawsuit","scotland","brings","stuck","connected","werent","bbc","doubt","pandemics","claiming","dakota","treasury","aircraft","folks","neighbors","provider","pace","direction","visiting","anywhere","bridge","curbside","dining","factor","investments","stronger","arriving","knowledge","sarscov","strategies","won","exports","palm","tells","depending","ebola","santa","boston","diabetes","harris","producing","aside","recovering","wellbeing","imported","properly","visited","jumped","shuttered","disinfectant","gains","shot","speaker","profit","rescue","charges","columbia","grew","mothers","restricted","temperatures","caring","division","guests","gain","match","youll","ending","insisted","collection","culture","putin","seniors","shock","deployed","orleans","van","worship","advocates","beef","crime","deemed","founder","medicines","nearby","presence","selfisolate","campus","rare","reaching","relax","towns","debate","explain","regime","text","uses","female","hide","sufficient","mississippi","crowds","sanctions","adjusted","extraordinary","truly","advanced","applied","bid","universities","extreme","stable","tool","technical","assessment","richard","metro","missing","screen","disruption","milk","neither","perfect","buyers","delhi","names","heroes","yeah","easier","outlook","preventing","seattle","faith","holds","pork","representatives","revenues","daniel","path","patrick","talked","documents","birx","numerous","perform","storm","moves","operational","brand","powerful","virtually","author","comply","heavily","machine","plane","responses","shouldnt","uks","developments","document","rice","consistent","enable","neighborhood","participants","entirely","peace","roll","waste","coalition","mitigate","performed","strain","unlike","primarily","confusion","eating","taxes","risen","bottom","gavin","angela","influenza","thoughts","brooklyn","criticized","officially","projections","sees","advance","antonio","closer","tokyo","convention","failing","ryan","prince","zone","afford","breathe","eric","projected","requested","search","remove","additionally","cutting","lived","martin","migrants","racial","bags","film","generation","kevin","laboratories","solidarity","victoria","begins","greatest","pictures","cook","gun","attended","touching","broke","elective","ramp","strongly","code","critics","discussions","application","plenty","purpose","cares","downturn","charity","harm","mouth","relaxed","tackle","tomorrow","dates","maximum","threats","announcing","indiana","proposal","utah","william","worries","delays","missed","outlets","warn","hiv","pelosi","resulting","trained","writer","imagine","male","rush","gdp","jim","card","deliveries","features","familiar","queen","selfisolating","sample","voice","careful","distribute","presented","relative","uncertain","detected","lessons","armed","caution","korean","mainly","relatives","suffer","driver","exit","kentucky","okay","bloomberg","economist","promised","desperate","monthly","basically","bond","findings","historic","initiatives","situations","briefings","congressional","diagnosis","dominic","shape","career","guide","paris","resulted","severely","apps","captain","creative","purchases","swabs","appreciate","argued","grateful","inventory","cell","illnesses","passenger","puts","ends","futures","theyll","broader","complaints","gross","manchester","recording","threatened","clubs","demanding","filled","gathered","pregnant","afraid","knowing","surgeries","device","scared","stuff","comprehensive","optimistic","prompted","rolling","collective","nice","ruling","seasonal","shortly","unions","carrier","fed","latin","leaves","mount","portfolio","travelers","cancel","regardless","trips","victory","warren","airports","consumption","severity","bear","collect","depend","venues","shortterm","suddenly","transparency","detention","proud","charles","declaration","indicated","involving","phil","winter","entered","error","hispanic","passing","permanent","versus","expenses","fees","helpful","joining","traveled","droplets","holy","minority","grants","operators","packed","slowed","transit","trouble","ron","technologies","cautious","collected","degree","emerge","orange","strength","urge","allies","truck","henry","saving","targeted","throat","arrest","fashion","marked","relevant","lagos","stages","weak","maintained","missouri","grand","handful","safer","tend","commerce","emergencies","guys","heads","burden","century","coffee","marketing","necessarily","residence","respirators","conducting","obtained","broken","commitment","behavior","discussion","hurt","trains","shifts","conflict","indias","killing","sydney","academic","ages","crash","emotional","festival","prof","retired","surgery","tips","immigrants","shutdowns","tweets","deeply","episode","fifth","staffing","birth","expanding","expectations","greg","locally","malls","southeast","compliance","jack","portion","robust","stem","tourists","containing","fired","steady","theaters","troops","australias","toronto","correctional","nbc","partial","pulled","associate","connection","dire","manhattan","quarters","reliable","senator","ventilation","expansion","preparedness","williams","benchmark","celebrate","comfortable","follows","gradual","investor","malaria","competition","leads","tribute","downtown","milwaukee","representative","chancellor","disruptions","golf","jackson","nick","pharmaceutical","tony","whatsapp","critically","permission","stranded","awareness","coordinator","earth","waves","affecting","demands","fallout","tour","warehouse","candidate","contained","proven","ramadan","resort","silence","interests","perspective","producer","referring","cast","coughing","farms","returns","saved","wider","addressing","context","continent","fatality","pompeo","seat","segment","seoul","therapy","volunteer","adopted","brent","dan","dramatic","recoveries","depends","diagnostic","explains","mitigation","sharply","counts","impose","residential","alabama","bright","conversations","etc","sooner","engineering","meal","pending","behalf","childrens","directors","interested","nevada","detect","johnsons","mom","agents","covers","hospitalization","transferred","drew","jeff","recommend","sanitation","tables","alliance","contagion","editor","respectively","thinks","finished","organisations","transition","amazing","everywhere","ideas","shortness","shutting","wedding","command","core","sleep","alarm","contrast","hardhit","medication","reasonable","absence","addressed","releasing","battling","forms","monetary","sides","struck","traders","dad","dramatically","logistics","deals","drivethru","representing","shelterinplace","apartment","designated","midst","packages","smell","aim","ben","delaware","somebody","arrival","fines","indoors","ocean","collaboration","combination","overwhelming","pricing","brands","requirement","alleged","chicken","contacted","elizabeth","reaction","socalled","declining","flying","granted","invest","sarah","spirit","connect","electricity","layoffs","wages","miami","stepped","elected","engage","praised","reads","allegations","dow","prayers","africas","clothing","manner","predict","purchasing","smart","underway","yorkers","atlanta","expecting","muslim","tedros","anticipated","economists","legislature","observe","software","ambassador","candidates","panel","rumors","successfully","originated","retirement","blog","carefully","hits","hopefully","interesting","resource","rich","carriers","dogs","khan","native","phased","recommends","stayed","sustainable","understood","heading","jeremy","shipping","submitted","constitutional","pacific","regulatory","steven","imports","parent","shelters","survival","vendors","boxes","cards","properties","aides","anniversary","controls","mary","miller","participate","agricultural","expensive","gotten","incredibly","scene","christian","copy","excess","extending","morgan","promote","thailand","traveling","typical","universal","koreas","reserved","advertising","allegedly","auto","communist","lies","literally","managers","victim","influence","license","nuclear","ordering","similarly","wage","australians","calm","fields","football","fraud","reveal","copyright","difficulty","focusing","fort","improvement","channels","highlighted","las","shipment","useful","books","democracy","marks","travellers","voluntary","capabilities","enormous","italys","jobless","beat","doubled","socialdistancing","youth","buses","fema","fly","incredible","modern","passes","sciences","corrections","gained","lawyer","row","cents","inform","jordan","queens","trucks","violating","assess","attributed","backed","employed","filing","physically","roads","securities","structure","municipal","oklahoma","practicing","brain","hoped","kitchen","mixed","prohibited","rebound","route","shed","upcoming","welfare","asset","enemy","epidemiologist","feature","medics","islands","issuing","protocol","swab","totally","user","campaigns","catching","drawn","engineers","inflation","chest","diego","enforced","executives","fixed","hell","illegal","maintenance","malaysia","obvious","organized","pet","preliminary","recognize","cautioned","flat","function","improved","pieces","teaching","trace","warns","wipes","highrisk","premium","promise","questioned","quiet","skin","workplace","attempts","outdoors","senators","wind","anybody","billions","crises","essentially","flatten","owned","petroleum","relaxing","title","vietnam","cleared","climbed","comparison","discovered","metropolitan","phones","rating","staffers","stopping","taste","forcing","memo","announces","hub","provision","actively","avoiding","northeast","bonds","observed","opposed","pharmacies","picked","till","timeline","vegetables","austin","authorized","category","hampshire","headed","interviews","mosques","positions","repeated","surpassed","suspend","tim","transfer","flattening","implementing","nancy","performing","wealth","chaos","defence","differences","fitness","donating","gop","infect","jonathan","justin","travelling","engaged","struggled","concluded","profits","shipments","cargo","contributing","extensive","gap","heat","scenarios","achieve","birmingham","britons","ceremony","corp","english","promising","threatening","emails","enhanced","guess","halted","outcomes","serves","socially","drinking","editors","firefighters","overcome","purchased","strike","substantial","wards","apparently","directive","ltd","madrid","rhode","teacher","andy","editing","joseph","makeshift","amounts","canadas","currency","adams","arrangements","confinement","inadequate","constant","moments","movements","referred","stars","cooking","followers","messaging","surprised","computer","corps","oxford","sets","song","timing","admissions","headquarters","innovation","warm","harvard","japanese","personally","rejected","reserves","web","attending","counted","crowd","formed","fun","ride","terrible","writes","courses","keeps","transparent","appointments","artists","complicated","contribute","difficulties","featured","grown","hotspots","mention","unemployed","beautiful","prayer","economics","legislative","silver","touched","arts","detail","guardian","hopeful","manufacture","savings","inmate","institution","mayors","unusual","coronaviruses","links","sheriffs","tremendous","adhere","asks","constitution","origin","unnecessary","accepted","beauty","fruit","gonna","grim","handwashing","improving","podcast","adapt","cluster","controlled","frequent","jason","mall","protections","skills","symptomatic","advisers","awaiting","brief","compiled","homemade","ignored","indefinitely","obtain","pastor","walmart","administrative","aviation","downward","jails","totals","pounds","promoting","scientist","tied","transmitted","alive","rolled","shore","suspension","yorks","apparent","disinfecting","interior","kinds","symptom","assume","audience","background","blamed","everyday","grade","cultural","duration","flexibility","gretchen","tickets","vladimir","workplaces","boss","girl","lunch","neighboring","provisions","draft","realize","surged","addresses","chamber","checked","coordinated","dismissed","experiences","phases","stick","electric","highlights","kit","lifesaving","pledged","anxious","assisted","sustained","watched","abc","contribution","electronic","journalist","philippines","era","expertise","islamic","nationals","outlined","reviewed","deficit","optimism","payroll","zones","federation","partially","sadly","tensions","breakdown","decreased","hed","midapril","rehabilitation","simon","charities","covidrelated","methods","sparked","telephone","windows","activists","anyway","banking","complained","concerning","expire","fairly","involve","lewis","distress","guarantee","hubei","incidents","minimize","websites","agenda","asthma","corporation","dependent","drawing","married","meantime","oversight","concert","francis","goals","isolating","offset","pointing","priorities","replace","sky","funerals","hospitality","intervention","restrict","suspect","tiny","values","acts","embassy","footage","iraq","pool","shield","shifted","veteran","bag","deadline","establish","fail","hitting","salaries","stark","super","voted","chances","complaint","harmful","neighbours","sporting","advising","colleges","declines","implementation","indoor","investigating","pray","prospect","purposes","remind","switch","consultant","cycle","seconds","somewhat","turns","implications","laura","wore","aims","circulating","counter","owns","paycheck","preexisting","recreation","tonight","blow","favorite","flags","guy","institutes","letting","mandate","mistake","affects","fabric","gift","holidays","lawyers","operates","researcher","behaviour","chat","employer","infecting","installed","precautionary","timely","camera","commodity","custody","forget","investigate","liberal","probable","tight","kate","clusters","dropping","surgeon","avenue","catholic","constantly","eager","herd","mechanical","scary","surface","viewers","volumes","display","chemical","defended","doug","hosted","matthew","recommendation","sessions","singer","spoken","bankruptcy","establishments","liberty","marking","corner","distributing","equipped","seats","acted","argue","entrance","letters","posting","strengthen","unveiled","adjust","bans","compensation","exist","plays","worn","allergy","approaches","investigations","nowhere","pharmacy","communicate","hotline","manufacturer","northwest","planes","revised","atlantic","clothes","deborah","desperately","graphics","rome","sad","administrator","customs","dallas","effectiveness","hadnt","lucky","narrative","preventive","stricter","supports","tip","degrees","hunt","mondays","solid","barriers","coordinate","famous","feeding","funded","jay","lowincome","mountain","secondary","actor","articles","barely","honor","quoted","reform","dies","mounting","partly","prominent","proved","twothirds","anticipate","categories","fish","noon","print","anonymity","coordination","discussing","disproportionately","instructed","posed","arms","californias","drink","feared","mainland","medications","memory","nights","proximity","salary","walked","journey","planet","sweeping","worrying","fridays","furloughed","neighborhoods","ordinary","processed","prompting","rallies","ratio","stability","accounting","consideration","crews","notified","particles","sentiment","signing","slowdown","southwest","spray","subscription","kindly","luxury","metrics","equivalent","fatal","girls","thrown","wars","whenever","wholesale","disclosed","drove","hiring","outcome","pattern","stadium","stringent","valuable","inspired","needing","periods","reference","refusing","screened","targets","accepting","aspects","breaks","duties","regulators","submit","wed","angry","appearing","consensus","doses","largescale","painful","pause","propaganda","resumed","yellow","andor","franklin","handed","informal","locals","ramping","charlie","deserted","disrupted","epidemiology","identifying","mirror","museums","populated","relying","alarming","commons","essentials","inquiry","metres","picking","proportion","financially","financing","humanity","hunger","loading","reelection","roles","streaming","universitys","arab","clarity","confined","courtesy","fix","frank","involves","nationally","reflects","capita","controversial","donors","reductions","tourist","yield","advise","arguing","banning","directives","forecasts","generated","midnight","monitored","resolution","resurgence","secret","counting","genetic","howard","academy","administered","affordable","checking","earliest","enforcing","exception","spirits","violations","capability","desire","rises","wears","chart","citizen","disposable","ignore","petition","preparation","stepping","swift","ties","amendment","differently","drivethrough","frustration","lights","livelihoods","nasal","player","plunged","resilience","assured","drastic","expense","frozen","navigate","polling","regard","cheap","noticed","prolonged","scope","adam","bulk","choices","competitive","extends","havoc","homeland","mortgage","origins","processes","argument","capable","daughters","edition","examples","experimental","favor","fundamental","gary","quarantines","territories","trusted","administrators","efficient","split","deceased","earn","fan","interim","procurement","restricting","smartphone","violation","clock","greatly","lie","philadelphia","recalled","shooting","sons","studying","welcomed","assault","badly","collecting","escape","larry","qualify","refuse","rushed","sorry","advocate","anger","declare","external","hardesthit","hoarding","investing","medium","preserve","survived","volatility","absolute","crazy","educational","engagement","normalcy","practical","prevented","rick","appearance","backlash","bob","crimes","occupancy","opinions","proposals","restriction","strictly","trigger","belgium","contractors","importantly","indicates","longtime","patrol","pleaded","reminder","sacrifice","stream","suspending","wonderful","accelerate","bread","devastated","equally","susceptible","trajectory","attempting","authors","participating","suits","wondering","emphasized","excited","proceed","sheriff","womens","interventions","introduction","placing","rob","somewhere","biological","corruption","permit","advocacy","deeper","framework","likes","loosening","respirator","scarce","upper","backlog","conferences","evaluation","intense","scenes","wood","accounted","demanded","divided","fragile","generate","import","motor","outlet","respective","sounds","vacation","achieved","attempted","besides","exceptions","grounds","medicaid","proof","sight","subsequent","susan","twoweek","corporations","llc","lock","poses","realized","relationships","stating","threatens","topic","topped","urgently","watchdog","assuming","gaps","reveals","viewed","villages","agencys","colleague","commodities","irresponsible","profile","sits","adopt","chose","consistently","dinner","guards","historical","presentation","principal","assisting","interaction","killer","praise","risking","ruled","blocked","directorgeneral","epidemiologists","imposing","violent","belief","breakfast","cafes","celebration","displayed","modest","ranging","soared","triggered","aide","appointed","contraction","exceed","filling","finds","forever","heightened","rolls","actors","furlough","grave","limitations","meaningful","polls","components","couples","graphic","historically","honest","lows","magazine","minds","nail","quarterly","targeting","attacked","attorneys","consecutive","dawn","pleased","procedure","thanked","contributions","dean","explaining","forth","highlight","lending","misleading","patterns","recognition","sport","waited","connections","handled","netherlands","studied","urges","viruss","writers","creates","likelihood","mainstream","organizers","accelerated","accordance","broadly","negotiations","partisan","removing","style","tragedy","transactions","arrives","damaged","flood","governance","guest","lying","moreover","recreational","replied","solve","tank","touted","celebrated","facilitate","innovative","interviewed","listening","accommodation","alternatives","influx","invisible","joy","load","opens","patrons","resistance","accommodate","anonymous","catastrophic","conclusion","televised","arm","demonstrate","doubling","exclusive","founded","highway","identity","operated","politically","supplier","wanting","amy","antiviral","chairs","demonstrated","europes","michelle","minor","sean","toxic","exists","interactions","maria","aggressively","enacted","motors","populous","represented","abandoned","appreciation","chiefs","instances","signal","staggering","urgency","launching","makers","persistent","regulation","retailer","slammed","uptodate","activist","creation","formal","papers","precaution","renewed","walls","attendance","authorization","chosen","flag","licensed","postpone","somehow","overwhelm","poorest","recognized","recommending","seeks","answered","arrivals","frustrated","introduce","jennifer","prospects","tuesdays","winning","hire","pulling","reflected","releases","sanitizing","swiftly","youd","agent","defeat","finances","reopens","routes","sensitive","cleaned","concept","measured","ramped","seemingly","staterun","travelled","accessible","forum","ranks","speculation","weekday","anymore","assigned","hearts","item","telegram","applies","approaching","climb","glass","gratitude","latter","lisa","scrutiny","slight","accuracy","bipartisan","cared","coping","fought","participation","publication","tracks","worsened","cheaper","collapsed","contains","defend","deserve","foreigners","presents","promoted","selected","thursdays","tries","admission","hardship","onethird","restore","scrambling","venture","accountable","booked","earned","inevitable","resilient","challenged","commander","flulike","insufficient","pop","resolve","slower","whereas","competing","entities","mode","sore","undergo","wing","catastrophe","coordinating","hardly","injury","wherever","acquired","avoided","controlling","obligation","restrictive","rival","vision","defined","economically","ignoring","modified","mornings","promises","publish","pump","strange","theyd","component","flexible","habits","josh","laying","principles","specialists","traded","accusing","announcements","cofounder","indication","obligations","raises","witnessed","confirmation","don","enjoying","onset","prioritize","suggestions","tap","unexpected","describing","fulltime","legislators","nervous","quarantining","reluctant","secured","lesson","pressing","proactive","reminded","struggles","allocated","captured","mandated","approached","pressed","suggestion","bolster","dangers","echoed","functioning","headache","legitimate","separated","engaging","epidemics","facial","celebrations","fraction","indicating","interact","occurring","reiterated","associations","disinfect","landscape","pages","replaced","shipped","steadily","consulting","precious","predictions","supplied","approve","describes","frame","internationally","looming","predicts","sustain","undermine","upset","disasters","reflecting","shifting","appealed","cancellation","explore","plunge","wednesdays","backing","cautiously","combating","deliberately","hired","keen","stakeholders","tasks","dealt","odds","choosing","destruction","generous","restarting","understands","valid","acknowledge","christopher","converted","documented","evaluate","horrible","insight","stays","dispute","hang","receives","taught","afloat","compare","explanation","foreseeable","lined","loosen","shocking","surprising","abide","plea","worstcase","destroyed","hosts","relies","resuming","reverse","silent","submission","titled","accusations","complaining","mistakes","questioning","supportive","deciding","deny","elements","interactive","atrisk","generations","independence","maker","mandates","presenting","reaches","submitting","violate","advises","coughs","drops","minimal","nevertheless","stretch","visible","voices","deploy","excellent","lists","resumption","devastation","disproportionate","frankly","impacting","landed","lasting","invited","poorly","stressful","convinced","declaring","evolving","guided","lining","risky","vigilant","briefly","manufactured","premature","budgets","criticised","definition","hotspot","magnitude","merely","react","separately","worsen","harsh","highlighting","neighbouring","notably","produces","relied","steep","subsequently","embrace","rallied","surging","epicentre","familys","applying","continuous","everyones","weekends","tragic","excuse","fortunate","meets","requesting","solely","striking","wary","anytime","inability","countless","milestone","stance","stops","shocked","eliminate","preparations","sounded","ultimate","aspect","notion","tackling","barred","emphasis","enhance","exacerbated","naturally","prepares","collectively","commonly","muchneeded","compromised","nonetheless","rarely","worsening","exceeded","safeguard","observing","plummeted"],"freq":[68636,58620,58433,47517,36273,29743,29220,28178,22490,22385,21436,21113,18467,18278,18249,18156,18022,17306,17115,16999,16749,16317,16303,16064,15976,15166,14778,14664,14353,14236,14184,13964,13234,13021,12985,12924,12863,12597,12528,12414,12072,11655,11611,11495,11413,11040,10827,10805,10507,10263,10079,10076,9927,9766,9716,9643,9618,9434,9416,9340,9319,9205,9150,9095,9059,8999,8973,8959,8908,8785,8719,8716,8631,8533,8531,8510,8510,8493,8304,8294,8291,8245,8146,8143,8075,7934,7913,7908,7832,7773,7616,7343,7335,7151,7081,6983,6962,6884,6875,6863,6850,6815,6770,6735,6721,6709,6679,6678,6626,6587,6550,6541,6533,6383,6352,6317,6310,6306,6302,6291,6267,6124,6069,6052,5994,5979,5975,5966,5951,5941,5857,5815,5812,5775,5739,5733,5731,5714,5697,5646,5637,5573,5571,5536,5534,5489,5470,5462,5454,5428,5415,5382,5337,5332,5272,5267,5242,5235,5224,5222,5221,5197,5194,5192,5190,5152,5144,5137,5129,5129,5103,5086,5086,5055,5034,5033,5022,5015,5011,5010,4993,4951,4947,4939,4929,4927,4927,4889,4884,4848,4843,4830,4830,4822,4808,4806,4800,4799,4771,4767,4756,4741,4718,4714,4711,4661,4654,4648,4646,4636,4617,4609,4600,4593,4581,4576,4571,4568,4548,4531,4528,4520,4517,4507,4494,4443,4442,4400,4392,4392,4377,4368,4353,4352,4332,4321,4312,4296,4291,4291,4283,4271,4252,4238,4228,4194,4177,4166,4158,4153,4143,4107,4104,4104,4040,4007,3989,3986,3961,3943,3937,3915,3914,3904,3897,3893,3878,3869,3868,3856,3854,3842,3836,3812,3807,3801,3775,3767,3759,3753,3743,3726,3718,3707,3688,3669,3661,3659,3650,3647,3637,3616,3614,3602,3600,3584,3567,3556,3549,3545,3545,3527,3512,3504,3501,3499,3498,3492,3480,3478,3476,3464,3462,3445,3443,3434,3432,3431,3427,3422,3411,3408,3402,3391,3387,3376,3372,3370,3360,3344,3312,3299,3294,3291,3268,3263,3259,3236,3228,3225,3217,3199,3183,3172,3168,3165,3154,3131,3131,3129,3112,3110,3104,3099,3098,3086,3075,3048,3047,3046,3040,3017,3008,3005,2983,2981,2980,2974,2951,2941,2939,2934,2927,2927,2921,2909,2907,2904,2904,2902,2899,2897,2889,2887,2885,2884,2883,2882,2877,2875,2860,2850,2847,2842,2837,2824,2820,2820,2818,2817,2816,2810,2805,2801,2800,2798,2795,2794,2787,2784,2781,2780,2777,2773,2773,2772,2764,2755,2754,2750,2749,2747,2740,2739,2735,2733,2729,2722,2714,2710,2709,2704,2695,2693,2690,2682,2676,2672,2669,2666,2658,2654,2649,2647,2642,2637,2634,2631,2629,2608,2601,2600,2600,2598,2598,2594,2584,2582,2576,2567,2564,2562,2561,2558,2553,2550,2549,2539,2533,2521,2513,2505,2498,2496,2489,2489,2486,2482,2480,2478,2472,2471,2468,2465,2464,2460,2455,2455,2449,2444,2441,2434,2426,2423,2420,2410,2408,2408,2406,2403,2401,2401,2400,2391,2391,2388,2387,2384,2374,2367,2363,2362,2359,2351,2351,2350,2350,2350,2338,2331,2323,2320,2316,2315,2311,2308,2308,2307,2305,2300,2300,2297,2293,2290,2284,2280,2276,2276,2271,2271,2268,2266,2263,2261,2257,2256,2252,2244,2234,2233,2221,2221,2221,2220,2217,2216,2216,2215,2212,2211,2207,2205,2200,2198,2196,2195,2192,2184,2183,2183,2175,2171,2170,2166,2165,2164,2149,2144,2139,2129,2125,2124,2122,2121,2119,2113,2110,2106,2105,2102,2101,2101,2096,2093,2092,2091,2089,2088,2086,2085,2085,2083,2080,2079,2078,2076,2068,2067,2066,2065,2065,2064,2060,2059,2058,2055,2054,2053,2053,2052,2051,2050,2041,2040,2037,2035,2034,2033,2033,2029,2024,2022,2022,2015,2015,2011,2006,2006,2004,1998,1998,1996,1989,1989,1988,1984,1984,1982,1980,1976,1974,1974,1974,1971,1970,1967,1966,1963,1961,1961,1949,1939,1934,1933,1929,1928,1924,1919,1913,1913,1911,1908,1906,1904,1902,1902,1902,1901,1900,1897,1894,1893,1892,1890,1889,1888,1886,1885,1884,1882,1878,1877,1873,1872,1871,1870,1867,1866,1865,1863,1862,1859,1858,1857,1850,1849,1847,1844,1844,1842,1839,1838,1837,1831,1830,1830,1825,1825,1824,1819,1819,1818,1818,1816,1815,1814,1814,1813,1812,1811,1811,1811,1807,1807,1802,1801,1798,1797,1796,1785,1785,1785,1783,1779,1777,1776,1769,1765,1765,1761,1760,1757,1756,1754,1754,1751,1750,1747,1746,1745,1743,1742,1741,1741,1739,1735,1734,1727,1722,1721,1721,1719,1717,1709,1708,1704,1702,1700,1700,1699,1699,1693,1693,1691,1691,1685,1685,1683,1683,1680,1680,1680,1679,1677,1672,1671,1670,1670,1667,1666,1660,1658,1651,1650,1648,1648,1640,1640,1635,1632,1631,1631,1629,1626,1624,1622,1621,1619,1618,1615,1614,1613,1611,1611,1610,1609,1609,1606,1605,1603,1602,1601,1601,1600,1600,1598,1598,1597,1596,1595,1595,1594,1591,1590,1590,1588,1587,1586,1584,1581,1581,1580,1575,1575,1570,1565,1565,1562,1561,1560,1560,1559,1559,1557,1552,1552,1551,1551,1546,1546,1545,1545,1543,1542,1540,1539,1538,1536,1535,1534,1530,1530,1529,1529,1526,1526,1524,1524,1523,1522,1520,1519,1517,1516,1514,1513,1511,1510,1504,1500,1497,1496,1496,1494,1494,1493,1492,1489,1488,1487,1484,1483,1482,1480,1472,1470,1470,1468,1466,1461,1456,1455,1453,1451,1449,1447,1447,1444,1443,1442,1440,1440,1437,1436,1436,1434,1434,1433,1432,1429,1429,1429,1429,1428,1427,1419,1419,1418,1412,1412,1410,1409,1408,1407,1407,1406,1405,1403,1403,1400,1399,1399,1399,1399,1398,1398,1396,1394,1394,1393,1391,1391,1391,1390,1388,1388,1388,1387,1387,1386,1385,1376,1376,1371,1366,1366,1365,1364,1364,1361,1360,1360,1359,1359,1359,1357,1357,1351,1340,1339,1339,1337,1335,1332,1332,1325,1324,1321,1320,1319,1319,1318,1317,1317,1317,1314,1313,1309,1309,1309,1309,1306,1306,1305,1304,1302,1301,1301,1300,1299,1296,1295,1295,1294,1294,1294,1292,1291,1291,1290,1289,1287,1287,1285,1283,1282,1279,1276,1276,1273,1272,1272,1271,1271,1271,1269,1268,1266,1265,1265,1264,1264,1264,1264,1261,1260,1259,1258,1258,1256,1255,1254,1253,1252,1252,1251,1249,1248,1246,1246,1244,1241,1240,1239,1238,1238,1237,1237,1237,1235,1233,1233,1233,1233,1231,1229,1229,1228,1227,1226,1226,1225,1225,1223,1221,1221,1221,1221,1221,1220,1218,1218,1216,1216,1215,1215,1213,1213,1213,1211,1211,1210,1210,1209,1205,1203,1203,1201,1198,1198,1197,1197,1196,1196,1191,1191,1191,1189,1187,1187,1186,1185,1183,1183,1182,1181,1180,1179,1179,1179,1178,1177,1175,1174,1173,1172,1172,1172,1171,1167,1167,1167,1165,1164,1164,1161,1160,1160,1159,1159,1158,1157,1157,1155,1153,1153,1153,1152,1151,1151,1151,1151,1150,1150,1149,1148,1148,1148,1148,1147,1146,1143,1143,1142,1142,1141,1141,1141,1140,1139,1137,1136,1136,1136,1135,1134,1133,1131,1130,1128,1128,1128,1128,1127,1123,1122,1121,1120,1120,1120,1120,1119,1117,1117,1116,1116,1115,1111,1111,1111,1111,1110,1110,1110,1110,1109,1109,1109,1108,1107,1107,1106,1105,1105,1105,1104,1103,1101,1101,1098,1098,1096,1096,1095,1095,1094,1093,1093,1092,1092,1091,1090,1088,1088,1087,1087,1086,1086,1084,1083,1083,1080,1080,1078,1078,1078,1077,1075,1074,1073,1072,1071,1071,1070,1070,1067,1067,1067,1066,1065,1065,1065,1065,1064,1063,1061,1061,1060,1060,1059,1057,1057,1057,1056,1055,1054,1053,1052,1052,1051,1050,1050,1049,1048,1047,1047,1046,1046,1046,1045,1045,1044,1043,1042,1042,1042,1042,1041,1037,1036,1036,1036,1035,1035,1035,1034,1032,1032,1032,1032,1030,1030,1030,1029,1028,1027,1025,1025,1025,1024,1024,1024,1023,1021,1020,1020,1019,1018,1018,1018,1018,1017,1017,1017,1016,1016,1015,1014,1013,1013,1012,1010,1009,1008,1007,1007,1006,1006,1005,1004,1004,1003,1003,1002,1002,1002,1001,1000,999,998,998,998,994,993,992,991,991,991,991,990,989,989,988,987,987,987,985,985,985,985,982,981,981,978,977,976,976,975,973,972,972,971,970,969,969,969,968,968,967,967,966,966,964,964,963,963,963,962,962,962,961,960,960,959,958,958,958,957,957,956,956,956,955,954,953,952,952,951,950,950,949,949,948,948,947,947,947,946,945,945,945,945,944,943,943,943,943,942,939,939,938,938,938,938,938,937,936,936,936,936,934,934,933,932,932,930,930,929,928,928,928,926,925,925,923,923,923,923,923,922,920,920,920,920,919,918,918,918,917,917,916,916,915,915,913,913,912,912,911,911,911,911,910,910,910,909,909,909,908,908,908,908,908,907,907,906,906,906,905,904,903,903,903,902,902,901,901,898,898,896,896,896,896,895,895,895,894,893,893,892,892,891,891,890,890,890,890,888,887,886,883,883,882,880,880,880,879,876,875,875,875,875,872,871,870,869,868,868,868,867,866,864,864,863,863,863,862,862,861,861,858,858,858,857,857,856,855,855,855,854,854,853,852,849,848,848,848,848,847,847,847,847,847,845,845,845,844,844,844,844,843,840,840,839,839,838,838,837,836,835,835,834,834,834,834,833,832,832,832,832,832,831,830,830,830,829,829,827,827,827,826,826,825,825,825,824,823,823,821,821,820,819,819,819,819,818,818,818,818,817,817,816,815,815,814,813,813,812,812,812,811,810,809,809,809,808,807,807,806,806,805,805,805,805,804,803,803,803,803,802,802,802,800,799,799,798,798,797,797,797,795,794,794,793,793,793,792,792,791,790,789,788,788,788,788,788,787,787,786,786,785,784,784,784,783,782,782,782,781,781,781,781,780,780,780,779,779,777,777,777,777,777,777,776,776,776,776,775,775,775,774,774,772,772,771,770,770,770,770,769,769,769,768,767,765,764,764,763,763,763,763,762,762,762,761,761,761,760,760,760,760,759,759,758,758,758,758,757,757,757,757,756,754,753,753,752,751,750,749,748,748,748,747,747,746,745,745,745,744,744,743,742,741,741,740,739,739,738,736,736,735,734,734,734,734,734,734,733,733,732,732,732,731,731,730,730,730,730,730,730,730,729,728,728,727,727,727,726,726,725,725,725,724,724,722,722,722,721,721,721,720,720,719,718,718,718,717,716,715,715,714,714,713,713,713,713,713,712,711,710,710,709,709,708,708,708,707,707,707,706,705,705,704,704,704,704,703,703,703,703,703,703,702,702,701,701,701,701,701,700,700,698,698,698,698,698,697,696,696,696,696,696,696,696,695,695,694,694,694,694,693,693,692,692,692,692,691,691,690,690,688,688,688,688,687,687,687,686,686,686,684,684,682,682,681,681,681,681,681,680,680,679,679,679,678,678,678,678,678,678,678,678,678,678,677,677,676,676,675,675,675,675,675,674,674,674,674,674,673,673,673,673,672,672,672,672,672,671,671,669,669,668,667,667,667,666,666,666,665,664,664,663,663,662,662,662,662,661,661,660,660,659,659,658,657,657,656,656,656,655,655,655,655,654,653,653,652,652,652,652,652,652,652,651,651,651,651,651,650,650,650,649,649,649,648,648,648,648,647,647,647,646,646,646,645,645,644,643,643,643,642,642,641,641,641,641,641,641,640,640,640,639,639,639,638,638,637,637,637,637,637,636,636,636,636,635,635,635,635,632,632,632,632,632,631,631,631,631,631,630,630,630,630,630,629,629,629,628,627,627,626,626,626,624,624,624,624,623,622,621,620,619,619,618,618,618,617,617,617,617,616,616,616,614,614,613,613,613,613,612,612,612,612,612,611,611,611,611,610,609,609,609,609,608,608,607,606,606,604,604,604,604,604,604,604,604,603,603,603,602,602,602,602,601,601,600,600,599,599,599,599,599,598,597,597,597,596,595,595,594,594,594,593,593,593,593,593,592,592,592,592,591,591,591,590,590,589,589,589,589,588,588,587,586,586,586,586,586,586,585,585,585,585,585,585,585,584,584,584,583,583,582,582,581,581,581,581,580,580,580,579,579,579,578,578,577,577,577,577,577,577,576,576,576,575,575,575,575,575,575,574,574,574,574,573,573,573,573,573,572,572,572,571,571,570,570,570,569,569,569,568,568,567,567,567,567,567,566,566,565,565,565,565,565,565,564,564,564,564,563,563,563,562,562,561,561,561,561,561,561,560,560,560,560,560,559,559,559,559,559,558,558,558,558,558,557,557,557,557,556,556,556,556,555,555,555,554,554,554,554,554,554,553,553,553,553,553,552,552,552,551,551,551,550,550,550,550,549,549,549,549,549,549,548,548,548,548,548,548,548,547,547,547,547,547,546,546,546,545,545,545,545,544,544,544,543,543,542,542,542,542,542,542,541,541,541,541,541,541,540,540,540,540,540,539,539,539,538,538,538,538,538,538,537,537,536,536,536,536,536,536,536,535,535,534,534,534,534,533,533,533,533,532,532,532,531,531,530,530,530,530,529,529,529,529,528,528,528,528,528,528,528,527,527,526,526,525,525,525,525,524,523,523,523,523,522,522,522,522,522,522,522,522,522,521,521,521,520,519,519,519,518,518,518,518,518,518,518,517,517,517,517,517,517,516,516,516,516,516,515,515,514,514,514,514,513,513,513,513,513,513,513,513,512,512,512,511,511,511,510,510,510,510,509,509,509,508,508,508,507,507,507,507,507,507,507,507,506,506,506,505,505,505,505,504,504,504,504,504,503,503,503,503,503,503,502,502,502,502,501,501,501,501,501,501,500,500,500,500,500,500,500,500,500,500,499,499,499,499,499,498,498,498,498,498,497,497,497,496,496,496,496,496,495,495,495,494,494,494,494,494,493,493,493,492,492,492,492,491,491,491,491,491,490,490,490,490,490,489,489,489,488,488,488,488,488,488,487,487,487,486,486,486,486,486,485,485,485,484,484,484,484,484,484,483,483,483,482,482,482,482,481,481,481,481,481,480,480,480,480,479,479,479,479,478,478,478,478,477,477,476,476,476,476,476,475,474,474,474,474,474,474,473,473,473,473,472,472,471,471,471,471,470,470,470,469,469,469,469,469,469,469,469,468,468,468,468,467,467,467,466,466,465,465,465,465,465,464,464,463,463,463,463,463,463,463,462,462,462,462,462,462,462,462,462,461,461,461,461,460,460,460,460,459,459,459,459,459,458,458,458,457,457,457,457,457,457,456,456,456,456,456,455,455,455,455,455,455,455,455,455,455,454,454,453,453,453,453,453,453,453,453,452,452,452,452,452,452,451,451,451,451,451,451,450,450,450,450,450,449,449,449,449,449,448,448,448,448,448,447,447,447,447,446,446,446,446,445,445,445,445,445,445,445,444,444,444,444,443,443,443,443,443,443,442,442,442,442,442,442,442,442,442,441,441,441,440,440,440,440,440,440,440,440,440,440,439,439,439,439,439,438,438,438,438,438,438,437,437,437,437,437,436,436,436,436,436,436,436,436,436,436,436,436,436,436,435,435,435,435,435,435,435,435,435,434,434,434,434,434,434,434,433,433,433,433,432,432,432,432,432,432,432,432,432,432,431,431,431,431,431,431,431,431,431,431,430,430,429,429,429,428,428,428,427,427,427,427,427,427,427,427,426,426,426,426,426,426,426,426,426,426,426,426,426,425,425,425,425,425,424,424,424,424,423,423,423,423,423,423,422,422,421,421,421,420,420,420,420,420,420,419,419,419,419,419,419,419,419,418,418,418,418,418,418,418,417,417,417,417,417,417,417,417,416,416,416,416,416,416,415,415,415,415,414,414,414,413,413,413,413,412,412,412,412,412,411,411,411,411,410,410,410,410,410,410,409,409,409,409,408,408,408,408,408,408,407,407,407,407,407,407,407,407,406,406,406,405,405,405,405,405,405,405,405,405,405,404,404,403,403,403,403,402,402,402,402,402,402,401,401,401,401,400,400,400,400,399,399,399,399,399,398,398,398,398,398,398,398,398,397,397,397,397,397,397,397,397,397,396,396,396,396,396,396,396,396,396,396,395,395,395,395,395,394,394,394,394,394,393,393,393,393,393,392,392,392,392,392,391,391,391,391,391,391,390,390,390,390,390,390,390,389,389,389,389,389,388,388,388,387,387,387,387,387,387,387,387,386,386,386,386,386,385,385,385,385,384,384,384,384,384,383,383,383,383,383,383,382,382,382,382,381,381,381,381,380,380,380,380,380,380,379,379,379,379,379,379,378,378,378,378,378,378,378,378,378,377,377,377,377,376,376,375,375,375,375,375,375,375,375,374,374,374,374,374,374,374,374,374,373,373,373,373,373,373,373,372,372,372,372,372,372,372,372,371,371,371,371,371,371,371,371,371,370,370,370,370,370,369,369,369,369,369,369,369,369,369,369,369,368,368,368,368,368,367,367,367,366,366,366,366,366,366,366,366,365,365,365,365,365,365,365,365,364,364,364,364,364,364,364,363,363,363,363,363,363,363,362,362,362,362,362,362,362,362,361,360,360,360,359,359,359,359,359,359,359,359,359,359,358,357,357,357,357,357,357,357,357,357,356,356,355,355,354,354,354,354,353,353,353,353,353,353,353,352,352,352,352,352,352,351,351,351,351,351,350,350,350,350,350,350,349,349,349,349,349,349,349,348,348,348,348,348,348,348,348,348,348,348,347,347,347,347,346,346,346,346,346,346,346,346,346,345,345,345,345,345,345,344,344,344,344,344,344,343,343,343,343,343,342,342,342,342,342,342,341,341,341,341,341,341,341,341,341,341,341,340,340,340,340,339,339,339,339,339,339,339,339,339,338,338,338,338,338,338,338,338,338,338,338,337,337,337,336,336,336,336,336,336,336,335,335,335,335,335,335,335,335,334,334,334,334,334,334,334,333,333,333,333,333,333,333,332,332,332,332,332,332,332,332,332,332,331,331,331,331,331,331,330,330,330,330,330,330,330,330,330,329,329,329,329,329,329,329,328,328,328,328,328,328,328,328,328,327,327,327,327,327,327,327,327,327,326,326,326,326,326,326,325,325,325,325,325,325,325,325,325,325,325,324,324,324,323,323,323,323,323,323,323,323,323,322,322,322,322,321,321,321,321,321,321,321,321,321,320,320,320,320,320,320,320,320,320,320,319,319,319,319,319,319,319,318,318,318,318,317,317,317,317,317,317,317,317,317,317,316,316,316,316,316,316,316,316,316,316,316,316,315,315,315,314,314,314,314,314,314,314,314,313,313,313,313,313,313,313,313,313,312,312,312,312,312,312,312,312,312,311,311,311,311,311,311,311,311,311,311,311,310,310,310,310,310,310,310,310,309,309,309,309,309,309,309,309,309,309,308,308,308,308,308,308,308,308,308,308,308,308,307,307,307,307,307,307,306,306,306,306,306,305,305,305,305,305,304,304,304,304,304,303,303,303,302,302,302,302,302,302,302,302,301,301,301,301,301,301,300,300,300,300,300,300,300,300,300,300,300,299,299,299,299,299,299,299,299,299,299,299,298,298,298,298,298,298,298,298,298,298,298,298,297,297,297,297,297,296,296,296,296,296,296,295,295,295,295,295,295,295,295,294,294,294,294,294,294,293,293,293,293,293,292,292,292,292,292,292,292,292,292,291,291,291,291,291,291,291,291,291,290,290,290,290,290,290,289,289,289,289,289,289,289,289,289,289,289,288,288,288,288,288,288,288,287,287,287,287,287,287,287,287,287,287,287,286,286,286,286,286,286,286,285,285,285,285,284,284,284,284,284,284,284,284,284,283,283,283,283,283,283,283,283,283,283,283,283,282,282,282,282,282,281,281,281,281,281,281,281,281,281,280,280,280,280,280,279,279,279,279,279,279,279,279,279,279,279,278,278,278,278,278,278,278,278,278,277,277,277,276,276,276,276,276,275,275,275,275,275,275,275,274,274,274,274,274,274,274,272,272,272,272,272,272,272,271,271,271,271,271,271,271,270,270,270,270,270,269,269,269,269,269,269,269,269,268,268,268,268,268,268,268,267,267,267,267,267,267,266,266,266,266,266,266,266,265,265,265,265,265,264,264,264,264,264,263,263,263,263,263,263,263,263,263,262,262,262,262,262,262,262,262,262,261,261,261,261,261,261,261,261,261,261,261,260,260,260,260,260,260,259,259,259,259,259,258,258,258,258,258,258,258,258,257,257,257,257,257,257,256,256,256,256,256,255,255,255,255,255,255,255,254,254,254,254,254,254,254,254,254,254,253,253,253,253,253,253,253,253,252,252,252,252,252,252,252,251,251,251,251,251,251,251,251,250,250,250,250,250,250,250,249,249,249,249,249,248,248,248,247,247,247,246,246,246,246,246,246,246,245,245,245,244,244,244,244,244,244,243,243,243,243,243,243,243,242,242,242,242,241,241,241,241,241,241,241,241,241,240,240,240,239,239,239,239,239,238,238,238,238,238,238,238,238,237,237,236,236,236,236,236,236,235,235,235,235,235,235,235,235,234,234,234,234,233,233,233,233,233,233,233,233,232,232,232,231,231,231,231,231,231,231,231,230,230,230,230,230,229,229,229,229,228,228,228,228,228,228,228,228,228,227,227,227,227,227,227,227,227,226,226,226,226,225,225,225,225,225,225,224,224,224,223,223,223,223,223,223,223,222,222,222,221,221,221,221,221,221,221,221,221,220,220,220,220,220,220,220,220,219,219,219,218,218,217,217,217,217,216,215,215,215,215,213,213,213,212,211,210,210,210,210,209,208,208,208,208,207,207,207,206,206,206,206,206,206,205,205,205,204,204,204,203,201,200,199,198],"fontFamily":"Segoe UI","fontWeight":"bold","color":"random-dark","minSize":0,"weightFactor":0.00157351827029547,"backgroundColor":"white","gridSize":0,"minRotation":-0.785398163397448,"maxRotation":0.785398163397448,"shuffle":true,"rotateRatio":0.4,"shape":"star","ellipticity":0.65,"figBase64":null,"hover":null},"evals":[],"jsHooks":{"render":[{"code":"function(el,x){\n                        console.log(123);\n                        if(!iii){\n                          window.location.reload();\n                          iii = False;\n\n                        }\n  }","data":null}]}}</script>
+<script type="application/htmlwidget-sizing" data-for="htmlwidget-f6a9ac858957b18d8c79">{"viewer":{"width":450,"height":350,"padding":0,"fill":true},"browser":{"width":960,"height":500,"padding":0,"fill":true}}</script>
+</body>
+</html>
