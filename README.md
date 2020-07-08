@@ -26,7 +26,7 @@ The Structure of our repository is as per below:-
 * **objects -> These are the objects that we've saved and could be passed to our scripts instead of having the overhead of running time-consuming functions repetitively. Since our Dataset is huge, using reproducible objects saved us a lot of time.**
 
 
-* **report -> The process notebook lies under this folder along with the plots folder that has all the graphs and images required to run the Process notebook. If we intend to run the process notebook then we would require the "reports" and the "DWR-project.RProj under a folder together.**
+* **report -> The process notebook lies under this folder along with the plots folder that has all the graphs and images required to run the Process notebook. If we intend to run the process notebook then we would require the "reports", "DWR-project.RProj and the Rmd file under a folder together.**
 
 
 * **src -> This folder contains all the scripts related to the project.**
@@ -35,6 +35,4 @@ The Structure of our repository is as per below:-
 * **DWR-project.RProj -> The RProject file is required as we've not hardcoded any file path anywhere. so teh scripts and process notebook would take the path of the RProject and run the underlying codes and process notebook.**
 
 
-## Process Notebook
 
-The html and Rmd version of the  process notebook stays here.
