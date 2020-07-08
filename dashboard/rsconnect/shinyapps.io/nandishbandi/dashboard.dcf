@@ -1,0 +1,12 @@
+name: dashboard
+title: dashboard
+username:
+account: nandishbandi
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2550097
+bundleId: 3369161
+url: https://nandishbandi.shinyapps.io/dashboard/
+when: 1594245023.09402
+asMultiple: FALSE
+asStatic: FALSE
