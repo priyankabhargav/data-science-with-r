@@ -1,7 +1,5 @@
-# data-science-with-r
+# Multi-label Classification of news articles on Coronavirus
 Repository for the course project
-title: "Multi-label Classification of news articles on Coronavirus"
-
 
 ## Website URL
 
