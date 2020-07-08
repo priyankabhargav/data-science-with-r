@@ -3,7 +3,7 @@ Repository for the course project
 
 ## Website URL
 
-https://chandanbhat.shinyapps.io/dashboard/
+https://nandishbandi.shinyapps.io/dashboard/
 
 
 ## Screencast URL
