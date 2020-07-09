@@ -5,12 +5,15 @@ Repository for the course project
 
 https://nandishbandi.shinyapps.io/dashboard/
 
+## Process Notebook URL
+https://drive.google.com/drive/folders/1k5OCaLC_VfymXlpt9z48y5bOrwvLkf6z
 
 ## Screencast URL
-
+https://www.youtube.com/watch?v=z9FDROKYoDw&feature=youtu.be
 
 ## Data URL
 https://drive.google.com/drive/folders/17ytVYhZan3Zto0aCs58IrcKQkHPuwqLg?usp=sharing
+
 ## Repository structure
 
 
