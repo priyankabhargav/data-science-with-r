@@ -1,5 +1,4 @@
-Each team must use a single shared GitHub repository1. If your work cannot be accessed because these directions are not followed correctly, this part will be considered as not submitted. You will need to specify your project GitHub URL in the project proposal form. Store the following in your GitHub repository:
-br()
-R Markdown Notebook: your project process notebook
-Data: include all the data that you used in your project. If the data is too large for GitHub store it on an external cloud storage provider, such as Dropbox, Google Drive or OneDrive.
-README: the README.md file must give an overview of what you are handing in: your project notebook, data, and URLs to your project websites and screencast videos.
+Ever since COVID-19 erupted into our world, research institutes and governments have released plenty of databases publicly to allow research groups and independent individuals to analyze the data around the coronavirus spread. We are facing an unprecedented public health crisis with the Coronavirus (Covid-19) outbreak. We believe that data-driven decisions, and people working together for the greater good, are one of the better ways to tackle and deal with this difficult time.
+
+
+We are interested to know How the worlds news media is covering the COVID-19 pandemic? Building on the massive television news narratives dataset GDELT released a powerful news dataset of the URLs, titles, publication dates and brief snippet of more than 1.1 million worldwide English language online news articles mentioning the virus to enable researchers and journalists to understand the global context of how the outbreak has been covered since November 2019. This dataset has been expanding daily and includes a number of related topics.
