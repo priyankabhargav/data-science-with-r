@@ -1,12 +1,12 @@
 # Multi-label Classification of news articles on Coronavirus
 Repository for the course project
+
 # Team Members
 
-Team Members-
-Calida Pereira                     calida.pereira@st.ovgu.de                229945
-Chandan Radhakrishna               chandan.radhakrishna@st.ovgu.de          229746
-Nandish Bandi Subbarayappa         nandish.bandi@st.ovgu.de                 229591
-Mohit Jaripatke                    mohit.jaripatke@st.ovgu.de               224651
+Calida Pereira                     calida.pereira@st.ovgu.de                229945 <br/>
+Chandan Radhakrishna               chandan.radhakrishna@st.ovgu.de          229746 <br/>
+Nandish Bandi Subbarayappa         nandish.bandi@st.ovgu.de                 229591 <br/>
+Mohit Jaripatke                    mohit.jaripatke@st.ovgu.de               224651 <br/>
 Priyanka Bhargava                  priyanka.bhargava@st.ovgu.de             229675
 
 ## Website URL
